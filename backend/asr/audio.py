@@ -1,23 +1,42 @@
 """
 backend/asr/audio.py
-Real-time microphone capture using sounddevice.
+Real-time microphone capture using sounddevice — VAD endpoint detection.
 
-Strategy:
-  - Capture 16 kHz mono float32 audio continuously in small blocks (20 ms).
-  - Accumulate samples into a ring buffer.
-  - Every STRIDE_SEC seconds of new audio arriving, extract the last
-    WINDOW_SEC of audio and push it to an asyncio/threading queue for inference.
-  - This sliding-window approach ensures no speech is lost between chunks.
+Strategy (Voice Activity Detection):
+  ─────────────────────────────────────────────────────────────────────
+  Instead of a sliding window (which causes repeated re-transcription
+  and hallucinations), we use utterance-based endpoint detection:
 
-Buffer sizes (defaults):
-  WINDOW_SEC  = 3.0 s  → 48 000 samples per inference call
-  STRIDE_SEC  = 0.5 s  → new inference every ~0.5 s of new audio
-  BLOCK_SIZE  = 320     → 20 ms blocks fed to sounddevice callback
+    1. IDLE state    : listening for speech to start
+    2. SPEAKING state: RMS rises above SPEECH_RMS_THRESHOLD
+                       → accumulate audio samples
+    3. SILENCE state : RMS drops below SILENCE_RMS_THRESHOLD
+                       → if silence lasts ≥ SILENCE_DURATION_SEC,
+                         emit the accumulated utterance for inference
+                         and return to IDLE
+
+  A short pre-roll buffer (PRE_ROLL_SEC) is kept so the very beginning
+  of each command (which often has a slightly lower RMS) is not clipped.
+
+  This ensures:
+    • Each command is transcribed ONCE, not dozens of times
+    • No hallucinated repetition from reprocessed audio
+    • Clean per-utterance output
+
+  Tunable constants:
+    SPEECH_RMS_THRESHOLD  = 0.015  — RMS above which speech is detected
+    SILENCE_RMS_THRESHOLD = 0.010  — RMS below which silence is declared
+    SILENCE_DURATION_SEC  = 0.60   — how long silence must last to end utterance
+    MIN_SPEECH_SEC        = 0.30   — minimum utterance length (filter noise)
+    MAX_SPEECH_SEC        = 10.0   — hard cap to avoid infinite accumulation
+    PRE_ROLL_SEC          = 0.30   — pre-speech audio kept to avoid clipping
+    BLOCK_SIZE            = 320    — 20 ms blocks (16000 × 0.02)
 """
 
 import threading
 import queue
 from collections import deque
+from enum import Enum, auto
 from typing import Callable, Optional
 
 import numpy as np
@@ -26,111 +45,182 @@ from loguru import logger
 
 from backend.asr.utils import SAMPLE_RATE
 
-# ── defaults ─────────────────────────────────────────────────────────────────
-WINDOW_SEC  = 3.0    # seconds of audio per inference window
-STRIDE_SEC  = 0.5    # seconds of new audio before triggering inference
-BLOCK_SIZE  = 320    # samples per sounddevice callback (20 ms)
-SILENCE_RMS = 0.008  # RMS threshold — blocks below this are treated as silence
+# ── VAD tuning constants ──────────────────────────────────────────────────────
+SPEECH_RMS_THRESHOLD  = 0.015   # RMS above this → speech
+SILENCE_RMS_THRESHOLD = 0.010   # RMS below this → silence  (hysteresis gap)
+SILENCE_DURATION_SEC  = 0.60    # seconds of silence before utterance ends
+MIN_SPEECH_SEC        = 0.30    # minimum utterance length to send for inference
+MAX_SPEECH_SEC        = 10.0    # hard cap — emit even if still speaking
+PRE_ROLL_SEC          = 0.30    # seconds of pre-speech buffer kept
+BLOCK_SIZE            = 320     # sounddevice block size: 20 ms at 16 kHz
+
+
+class _VadState(Enum):
+    IDLE     = auto()   # waiting for speech
+    SPEAKING = auto()   # accumulating speech
+    TRAILING = auto()   # speech ended, counting silence frames
 
 
 class AudioCapture:
     """
-    Continuously captures microphone audio and emits audio windows for inference.
+    Continuously captures microphone audio and emits complete utterances
+    for inference using Voice Activity Detection (VAD).
 
     Usage
     -----
     def on_audio(chunk: np.ndarray):
-        # chunk is shape [~48000], float32, 16 kHz
+        # chunk is ONE clean utterance, e.g. "turn on the patient monitor"
         text = model.transcribe(chunk)
         print(text)
 
     cap = AudioCapture(on_audio_callback=on_audio)
     cap.start()
-    # ... run your application ...
+    # ... run ...
     cap.stop()
     """
 
     def __init__(
         self,
         on_audio_callback: Callable[[np.ndarray], None],
-        window_sec: float = WINDOW_SEC,
-        stride_sec: float = STRIDE_SEC,
         sample_rate: int = SAMPLE_RATE,
         device: Optional[int] = None,
     ):
         self.on_audio    = on_audio_callback
-        self.window_sec  = window_sec
-        self.stride_sec  = stride_sec
         self.sample_rate = sample_rate
         self.device      = device
 
-        self._window_samples = int(window_sec * sample_rate)
-        self._stride_samples = int(stride_sec * sample_rate)
+        # Derived frame counts
+        self._silence_frames_needed = int(
+            SILENCE_DURATION_SEC * sample_rate / BLOCK_SIZE
+        )
+        self._min_speech_samples = int(MIN_SPEECH_SEC * sample_rate)
+        self._max_speech_samples = int(MAX_SPEECH_SEC * sample_rate)
+        self._pre_roll_samples   = int(PRE_ROLL_SEC * sample_rate)
 
-        # Ring buffer: holds up to window_sec of audio
-        self._ring: deque = deque(maxlen=self._window_samples)
+        # Pre-roll ring buffer — always holds last PRE_ROLL_SEC of audio
+        self._pre_roll: deque = deque(maxlen=self._pre_roll_samples)
 
-        # Audio queue: filled by sounddevice callback, consumed by worker thread
+        # Utterance accumulation buffer
+        self._speech_buf: list = []
+
+        # VAD state
+        self._state              = _VadState.IDLE
+        self._silence_frame_count = 0
+
+        # sounddevice → worker queue
         self._audio_queue: queue.Queue = queue.Queue()
 
-        self._new_samples   = 0          # count since last inference trigger
-        self._running       = False
+        self._running        = False
         self._worker_thread: Optional[threading.Thread] = None
         self._stream:        Optional[sd.InputStream]   = None
 
     # ── internal ──────────────────────────────────────────────────────────────
 
-    def _sd_callback(
-        self,
-        indata: np.ndarray,
-        frames: int,
-        time,
-        status,
-    ) -> None:
-        """Called by sounddevice in a separate thread for each captured block."""
+    def _sd_callback(self, indata: np.ndarray, frames: int, time, status) -> None:
+        """Called by sounddevice for every BLOCK_SIZE-sample block."""
         if status:
             logger.warning(f"sounddevice status: {status}")
-        # indata shape: [frames, channels] — take first channel
-        mono = indata[:, 0].copy()
-        self._audio_queue.put(mono)
+        self._audio_queue.put(indata[:, 0].copy())
+
+    def _emit_utterance(self) -> None:
+        """Assemble pre-roll + speech buffer and send to inference callback."""
+        pre   = np.array(list(self._pre_roll), dtype=np.float32)
+        utt   = np.array(self._speech_buf, dtype=np.float32)
+        audio = np.concatenate([pre, utt]) if len(pre) > 0 else utt
+
+        # Trim to MAX_SPEECH_SEC just in case
+        audio = audio[: self._max_speech_samples]
+
+        if len(audio) >= self._min_speech_samples:
+            try:
+                self.on_audio(audio)
+            except Exception as exc:
+                logger.error(f"on_audio callback error: {exc}")
+        else:
+            logger.debug(
+                f"Utterance too short ({len(audio)/self.sample_rate:.2f}s), skipped."
+            )
 
     def _worker(self) -> None:
-        """Background thread: drains the audio queue and triggers inference."""
+        """Background thread: VAD state machine."""
         while self._running:
             try:
-                chunk = self._audio_queue.get(timeout=0.05)
+                block = self._audio_queue.get(timeout=0.05)
             except queue.Empty:
+                # When in TRAILING state, a long silence in the queue also ends utt
+                if self._state == _VadState.TRAILING:
+                    self._silence_frame_count += 1
+                    if self._silence_frame_count >= self._silence_frames_needed:
+                        self._emit_utterance()
+                        self._speech_buf = []
+                        self._silence_frame_count = 0
+                        self._state = _VadState.IDLE
                 continue
 
-            # Append to ring buffer
-            self._ring.extend(chunk.tolist())
-            self._new_samples += len(chunk)
+            rms = float(np.sqrt(np.mean(block ** 2)))
 
-            # Check silence
-            rms = float(np.sqrt(np.mean(chunk ** 2)))
-            is_silent = rms < SILENCE_RMS
+            if self._state == _VadState.IDLE:
+                # Always update pre-roll
+                self._pre_roll.extend(block.tolist())
 
-            # Trigger inference when enough new non-silent audio has arrived
-            if self._new_samples >= self._stride_samples and not is_silent:
-                self._new_samples = 0
-                window = np.array(self._ring, dtype=np.float32)
-                if len(window) > 0:
-                    try:
-                        self.on_audio(window)
-                    except Exception as exc:
-                        logger.error(f"on_audio callback error: {exc}")
+                if rms >= SPEECH_RMS_THRESHOLD:
+                    # Speech started
+                    self._state      = _VadState.SPEAKING
+                    self._speech_buf = []
+                    self._speech_buf.extend(block.tolist())
+                    logger.debug("VAD: speech START")
+
+            elif self._state == _VadState.SPEAKING:
+                self._speech_buf.extend(block.tolist())
+
+                # Hard cap check
+                if len(self._speech_buf) >= self._max_speech_samples:
+                    logger.debug("VAD: hard cap reached, emitting")
+                    self._emit_utterance()
+                    self._speech_buf          = []
+                    self._pre_roll            = deque(maxlen=self._pre_roll_samples)
+                    self._silence_frame_count = 0
+                    self._state               = _VadState.IDLE
+                    continue
+
+                if rms < SILENCE_RMS_THRESHOLD:
+                    # Possible end of speech
+                    self._state               = _VadState.TRAILING
+                    self._silence_frame_count = 1
+                    logger.debug("VAD: trailing silence started")
+
+            elif self._state == _VadState.TRAILING:
+                self._speech_buf.extend(block.tolist())
+
+                if rms >= SPEECH_RMS_THRESHOLD:
+                    # Speech resumed — false alarm, continue accumulating
+                    self._state               = _VadState.SPEAKING
+                    self._silence_frame_count = 0
+                    logger.debug("VAD: speech RESUMED")
+                else:
+                    self._silence_frame_count += 1
+                    if self._silence_frame_count >= self._silence_frames_needed:
+                        logger.debug(
+                            f"VAD: speech END — {len(self._speech_buf)/self.sample_rate:.2f}s accumulated"
+                        )
+                        self._emit_utterance()
+                        # Reset
+                        self._speech_buf          = []
+                        self._pre_roll            = deque(maxlen=self._pre_roll_samples)
+                        self._silence_frame_count = 0
+                        self._state               = _VadState.IDLE
 
     # ── public ────────────────────────────────────────────────────────────────
 
     def start(self) -> None:
-        """Start microphone capture and worker thread."""
+        """Start microphone capture and VAD worker thread."""
         if self._running:
             return
         self._running = True
 
         self._worker_thread = threading.Thread(
             target=self._worker,
-            name="asr-worker",
+            name="asr-vad-worker",
             daemon=True,
         )
         self._worker_thread.start()
@@ -145,8 +235,9 @@ class AudioCapture:
         )
         self._stream.start()
         logger.info(
-            f"AudioCapture started — device={self.device}, "
-            f"window={self.window_sec}s, stride={self.stride_sec}s, "
+            f"AudioCapture (VAD) started — device={self.device}, "
+            f"speech_thresh={SPEECH_RMS_THRESHOLD}, "
+            f"silence_dur={SILENCE_DURATION_SEC}s, "
             f"sr={self.sample_rate} Hz"
         )
 
@@ -162,5 +253,5 @@ class AudioCapture:
         logger.info("AudioCapture stopped.")
 
     def list_devices(self) -> None:
-        """Print available input devices to help the user choose."""
+        """Print available input devices."""
         print(sd.query_devices())

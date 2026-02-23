@@ -65,24 +65,22 @@ class LiveTranscriber:
         self._capture: AudioCapture = AudioCapture(
             on_audio_callback=self._process_chunk,
         )
-        self._last_text = ""   # suppress duplicate outputs
 
     def _process_chunk(self, audio: np.ndarray) -> None:
-        """Called by AudioCapture every STRIDE_SEC with the last WINDOW_SEC of audio."""
+        """Called by AudioCapture once per complete spoken utterance (VAD endpoint)."""
         t_start = time.perf_counter()
 
         text = self.model.transcribe(audio)
 
-        t_end    = time.perf_counter()
-        latency  = (t_end - t_start) * 1000  # ms
+        t_end   = time.perf_counter()
+        latency = (t_end - t_start) * 1000   # ms
+        dur_s   = len(audio) / 16_000        # utterance duration in seconds
 
-        if not text or text == self._last_text:
-            return   # skip empty or duplicate
+        if not text:
+            return   # silence / noise — nothing to show
 
-        self._last_text = text
         timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-
-        print(f"[{timestamp}]  {text}   ({latency:.0f} ms)")
+        print(f"[{timestamp}]  {text}   ({latency:.0f} ms | {dur_s:.1f}s audio)")
 
         if self.on_transcription is not None:
             try:
