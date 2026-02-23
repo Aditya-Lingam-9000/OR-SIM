@@ -523,7 +523,7 @@ ruff
 |-------|--------|---------|
 | Phase 0 — Foundation | ✅ Complete | `v0.0-foundation` |
 | Phase 1 — MedASR | ✅ Complete | `v1.0-asr-live` |
-| Phase 2 — Data Layer | ⏳ Not Started | — |
+| Phase 2 — Data Layer | ✅ Complete | `v2.0-data-layer` |
 | Phase 3 — LLM Prompts (Kaggle) | ⏳ Not Started | — |
 | Phase 4 — E2E Pipeline (Kaggle) | ⏳ Not Started | — |
 | Phase 5 — Backend Server | ⏳ Not Started | — |
