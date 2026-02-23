@@ -1,2 +1,6 @@
-# backend/pipeline — Phase 5: End-to-End Pipeline
-# Implemented in Phase 4
+# backend/pipeline — Phase 4: End-to-End Pipeline
+
+from backend.pipeline.pipeline import ORPipeline
+
+__all__ = ["ORPipeline"]
+
