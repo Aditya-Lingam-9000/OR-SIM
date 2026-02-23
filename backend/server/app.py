@@ -76,11 +76,6 @@ async def lifespan(app: FastAPI):
 # ── app factory ───────────────────────────────────────────────────────────────
 
 def create_app() -> FastAPI:
-    allowed_origins = os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173"
-    ).split(",")
-
     application = FastAPI(
         title       = "OR-SIM API",
         description = "Real-time OR simulator — voice commands → machine states",
@@ -88,13 +83,31 @@ def create_app() -> FastAPI:
         lifespan    = lifespan,
     )
 
-    application.add_middleware(
-        CORSMiddleware,
-        allow_origins     = allowed_origins,
-        allow_credentials = True,
-        allow_methods     = ["*"],
-        allow_headers     = ["*"],
-    )
+    # Allow any localhost port (Vite may start on 5173, 5174, etc.) and any
+    # ngrok / remote origin.  Production deployments should restrict this via
+    # the CORS_ORIGINS env-var which overrides the regex when set.
+    cors_origins_env = os.getenv("CORS_ORIGINS", "")
+    if cors_origins_env:
+        # Explicit override: comma-separated list, e.g. "https://my-app.com"
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins     = cors_origins_env.split(","),
+            allow_credentials = True,
+            allow_methods     = ["*"],
+            allow_headers     = ["*"],
+        )
+    else:
+        # Development default: allow any localhost port + any ngrok/remote origin.
+        # allow_origin_regex with allow_credentials=True is safe here because it
+        # still requires an explicit matching origin (not a wildcard *).
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins        = [],   # empty — regex takes precedence
+            allow_origin_regex   = r"https?://(localhost|127\.0\.0\.1)(:\d+)?|https://.*\.ngrok(-free)?\..*",
+            allow_credentials    = True,
+            allow_methods        = ["*"],
+            allow_headers        = ["*"],
+        )
 
     application.include_router(router)
 
