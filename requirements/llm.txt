@@ -1,0 +1,8 @@
+# Install llama-cpp-python with CUDA support (for Kaggle / GPU machines)
+# On Kaggle T4x2:
+#   CMAKE_ARGS="-DLLAMA_CUBLAS=on" pip install llama-cpp-python --force-reinstall --no-cache-dir
+#
+# On CPU-only (local dev, no GPU):
+#   pip install llama-cpp-python
+
+llama-cpp-python>=0.2.57
