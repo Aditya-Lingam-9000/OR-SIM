@@ -11,8 +11,14 @@
 import { useEffect, useRef } from 'react'
 import { useMachineStore } from '../store/machineStore'
 
-const WS_URL          = '/ws/state'   // proxied by Vite to ws://127.0.0.1:8000
-const RECONNECT_DELAY = 2000          // ms between reconnect attempts
+// If VITE_BACKEND_URL is set (e.g. https://xxxx.ngrok-free.app) the WS hook
+// connects directly to that host over wss://.  When blank the Vite dev-server
+// proxy handles the connection transparently (local / same-host deployments).
+const BACKEND_URL     = import.meta.env.VITE_BACKEND_URL || ''
+const WS_URL          = BACKEND_URL
+  ? BACKEND_URL.replace(/^https?:\/\//, '') // strip scheme, build wss:// below
+  : null                                     // null → use window.location.host
+const RECONNECT_DELAY = 2000
 
 export function useORWebSocket() {
   const applySnapshot = useMachineStore((s) => s.applySnapshot)
@@ -25,9 +31,15 @@ export function useORWebSocket() {
     if (unmounted.current) return
     setWsStatus('connecting')
 
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const host     = window.location.host
-    const ws       = new WebSocket(`${protocol}://${host}${WS_URL}`)
+    // Remote backend (ngrok): connect directly with wss://
+    // Local backend         : connect via Vite proxy (same host)
+    const wsUri = WS_URL
+      ? `wss://${WS_URL}/ws/state`
+      : (() => {
+          const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+          return `${proto}://${window.location.host}/ws/state`
+        })()
+    const ws = new WebSocket(wsUri)
     wsRef.current  = ws
 
     ws.onopen = () => {

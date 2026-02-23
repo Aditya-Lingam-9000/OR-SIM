@@ -55,10 +55,13 @@ export default function SurgerySelector() {
   const setSurgery    = useMachineStore((s) => s.setSurgery)
   const wsStatus      = useMachineStore((s) => s.wsStatus)
 
+  // Support remote backend via VITE_BACKEND_URL (e.g. ngrok URL)
+  const API_BASE = import.meta.env.VITE_BACKEND_URL || ''
+
   async function startSession() {
     setLoading(true)
     try {
-      const res = await fetch('/api/session/start', {
+      const res = await fetch(`${API_BASE}/api/session/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ surgery: selected }),
@@ -75,7 +78,7 @@ export default function SurgerySelector() {
   async function stopSession() {
     setLoading(true)
     try {
-      await fetch('/api/session/stop', { method: 'POST' })
+      await fetch(`${API_BASE}/api/session/stop`, { method: 'POST' })
       setSessionActive(false)
       setSurgery(null)
     } catch (e) { console.error(e) }
