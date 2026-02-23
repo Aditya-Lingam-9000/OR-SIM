@@ -238,4 +238,18 @@ class MedASRModel:
         with torch.no_grad():
             outputs = self._model(**inputs)
         predicted_ids = outputs.logits.argmax(-1)
-        return self._processor.batch_decode(predicted_ids)[0].strip().lower()
+        # group_tokens=True  → CTC collapse (removes consecutive dupes + blank tokens)
+        # skip_special_tokens=True → strips <epsilon>, <s>, </s> etc.
+        try:
+            text = self._processor.batch_decode(
+                predicted_ids, group_tokens=True, skip_special_tokens=True
+            )[0]
+        except TypeError:
+            # Some processor versions don't accept group_tokens
+            text = self._processor.batch_decode(
+                predicted_ids, skip_special_tokens=True
+            )[0]
+        # Belt-and-suspenders: remove any literal <epsilon> that slipped through
+        text = re.sub(r"<epsilon>", " ", text)
+        text = re.sub(r"\s+", " ", text).strip().lower()
+        return text
