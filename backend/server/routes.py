@@ -112,19 +112,24 @@ async def stop_session(request: Request):
 
 # ── state polling endpoint ─────────────────────────────────────────────────────
 
-@router.get("/api/state", response_model=StateResponse)
+@router.get("/api/state")
 async def get_state(request: Request):
     """
     Return current machine states as JSON (REST polling fallback).
-    Clients that cannot use WebSocket can poll this endpoint.
+    Returns 200 with status='idle' when no session is active so clients
+    can poll this endpoint safely at any time (including before session start).
     """
     app_state = request.app.state
 
     if getattr(app_state, "pipeline", None) is None:
-        raise HTTPException(status_code=400, detail="No active pipeline session.")
+        return {
+            "status":  "idle",
+            "message": "No active pipeline session. Start one with POST /api/session/start.",
+            "state":   {},
+        }
 
     snapshot = app_state.pipeline.state_manager.get_snapshot()
-    return StateResponse(status="ok", state=snapshot.to_json_dict())
+    return {"status": "ok", "state": snapshot.to_json_dict()}
 
 
 # ── health check ──────────────────────────────────────────────────────────────
