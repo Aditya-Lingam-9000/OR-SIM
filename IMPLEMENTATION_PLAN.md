@@ -521,8 +521,8 @@ ruff
 
 | Phase | Status | Git Tag |
 |-------|--------|---------|
-| Phase 0 — Foundation | 🔄 In Progress | — |
-| Phase 1 — MedASR | ⏳ Not Started | — |
+| Phase 0 — Foundation | ✅ Complete | `v0.0-foundation` |
+| Phase 1 — MedASR | ✅ Complete | `v1.0-asr-live` |
 | Phase 2 — Data Layer | ⏳ Not Started | — |
 | Phase 3 — LLM Prompts (Kaggle) | ⏳ Not Started | — |
 | Phase 4 — E2E Pipeline (Kaggle) | ⏳ Not Started | — |
