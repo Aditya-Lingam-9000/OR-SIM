@@ -24,12 +24,12 @@ Strategy (Voice Activity Detection):
     • Clean per-utterance output
 
   Tunable constants:
-    SPEECH_RMS_THRESHOLD  = 0.015  — RMS above which speech is detected
-    SILENCE_RMS_THRESHOLD = 0.010  — RMS below which silence is declared
-    SILENCE_DURATION_SEC  = 0.60   — how long silence must last to end utterance
+    SPEECH_RMS_THRESHOLD  = 0.012  — RMS above which speech is detected
+    SILENCE_RMS_THRESHOLD = 0.007  — RMS below which silence is declared
+    SILENCE_DURATION_SEC  = 0.75   — how long silence must last to end utterance
     MIN_SPEECH_SEC        = 0.30   — minimum utterance length (filter noise)
     MAX_SPEECH_SEC        = 10.0   — hard cap to avoid infinite accumulation
-    PRE_ROLL_SEC          = 0.30   — pre-speech audio kept to avoid clipping
+    PRE_ROLL_SEC          = 0.50   — pre-speech audio kept to avoid clipping
     BLOCK_SIZE            = 320    — 20 ms blocks (16000 × 0.02)
 """
 
@@ -46,12 +46,12 @@ from loguru import logger
 from backend.asr.utils import SAMPLE_RATE
 
 # ── VAD tuning constants ──────────────────────────────────────────────────────
-SPEECH_RMS_THRESHOLD  = 0.015   # RMS above this → speech
-SILENCE_RMS_THRESHOLD = 0.010   # RMS below this → silence  (hysteresis gap)
-SILENCE_DURATION_SEC  = 0.60    # seconds of silence before utterance ends
+SPEECH_RMS_THRESHOLD  = 0.012   # RMS above this → speech  (lower = catch softer starts)
+SILENCE_RMS_THRESHOLD = 0.007   # RMS below this → silence  (hysteresis gap)
+SILENCE_DURATION_SEC  = 0.75    # seconds of silence before utterance ends
 MIN_SPEECH_SEC        = 0.30    # minimum utterance length to send for inference
 MAX_SPEECH_SEC        = 10.0    # hard cap — emit even if still speaking
-PRE_ROLL_SEC          = 0.30    # seconds of pre-speech buffer kept
+PRE_ROLL_SEC          = 0.50    # seconds of pre-speech buffer to avoid start clipping
 BLOCK_SIZE            = 320     # sounddevice block size: 20 ms at 16 kHz
 
 
@@ -236,8 +236,8 @@ class AudioCapture:
         self._stream.start()
         logger.info(
             f"AudioCapture (VAD) started — device={self.device}, "
-            f"speech_thresh={SPEECH_RMS_THRESHOLD}, "
-            f"silence_dur={SILENCE_DURATION_SEC}s, "
+            f"speech_thresh={SPEECH_RMS_THRESHOLD}, silence_thresh={SILENCE_RMS_THRESHOLD}, "
+            f"silence_dur={SILENCE_DURATION_SEC}s, pre_roll={PRE_ROLL_SEC}s, "
             f"sr={self.sample_rate} Hz"
         )
 
