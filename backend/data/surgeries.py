@@ -63,19 +63,20 @@ _HEART = {
         "name":        "Defibrillator",
         "description": "Delivers electrical shocks to restore normal sinus rhythm "
                        "after reperfusion of the transplanted heart.",
-        "aliases":     ["defib", "shock machine", "cardioverter"],
+        "aliases":     ["defib", "shock machine", "cardioverter", "defibrillator unit"],
     },
     6: {
         "name":        "Electrocautery Unit",
         "description": "Provides monopolar and bipolar electrosurgical current for "
                        "cutting tissue and coagulating bleeding vessels.",
-        "aliases":     ["cautery", "bovie", "electrosurgical unit", "ESU", "diathermy"],
+        "aliases":     ["cautery", "bovie", "electrosurgical unit", "ESU", "diathermy",
+                        "electrosurgery unit", "bipolar electrosurgery unit"],
     },
     7: {
         "name":        "Suction Device",
         "description": "Removes blood and fluids from the operative field to maintain "
                        "clear surgical visibility throughout the procedure.",
-        "aliases":     ["suction", "suction machine", "aspirator"],
+        "aliases":     ["suction", "suction machine", "aspirator", "suction unit"],
     },
     8: {
         "name":        "Blood Warmer",
@@ -141,13 +142,14 @@ _LIVER = {
         "name":        "Ultrasonic Dissector (CUSA)",
         "description": "Cavitron Ultrasonic Surgical Aspirator fragments and aspirates "
                        "liver parenchyma while sparing bile ducts and blood vessels.",
-        "aliases":     ["CUSA", "ultrasonic dissector", "cavitron", "ultrasonic aspirator"],
+        "aliases":     ["CUSA", "ultrasonic dissector", "cavitron", "ultrasonic aspirator",
+                        "CUSA device"],
     },
     6: {
         "name":        "Suction Device",
         "description": "Removes blood, bile, and irrigant from the operative field and "
                        "the CUSA dissection plume.",
-        "aliases":     ["suction", "aspirator", "suction machine"],
+        "aliases":     ["suction", "aspirator", "suction machine", "suction unit"],
     },
     7: {
         "name":        "Cell Saver",
@@ -159,13 +161,15 @@ _LIVER = {
         "name":        "Fluid Warmer",
         "description": "Warms IV fluids and blood products inline to prevent "
                        "hypothermia during large-volume resuscitation.",
-        "aliases":     ["fluid warmer", "blood warmer", "hot line", "level 1"],
+        "aliases":     ["fluid warmer", "blood warmer", "hot line", "level 1",
+                        "patient warmer", "warming unit"],
     },
     9: {
         "name":        "Laparoscopy Tower",
         "description": "Provides HD video display for laparoscopic or hand-assisted "
                        "approach; includes camera unit, light source, and recorder.",
-        "aliases":     ["laparoscopy tower", "lap tower", "video tower", "camera tower"],
+        "aliases":     ["laparoscopy tower", "lap tower", "video tower", "camera tower",
+                        "laparoscopic tower", "laparoscope tower"],
     },
     10: {
         "name":        "CO2 Insufflator",
@@ -201,13 +205,15 @@ _KIDNEY_PCNL = {
         "name":        "Nephroscope Unit",
         "description": "Rigid nephroscope with light source and irrigation channel "
                        "for direct visualisation of the collecting system and stones.",
-        "aliases":     ["nephroscope", "scope", "rigid scope", "nephroscopy unit"],
+        "aliases":     ["nephroscope", "scope", "rigid scope", "nephroscopy unit",
+                        "nephroscope tower"],
     },
     3: {
         "name":        "Lithotripsy Device",
         "description": "Pneumatic or ultrasonic lithotripter fragments kidney stones "
                        "inside the collecting system for irrigation and extraction.",
-        "aliases":     ["lithotripsy", "lithotripter", "stone crusher", "EMS", "Swiss LithoClast"],
+        "aliases":     ["lithotripsy", "lithotripter", "stone crusher", "EMS", "Swiss LithoClast",
+                        "lithotripsy unit", "lithotripter device"],
     },
     4: {
         "name":        "Irrigation Pump",
@@ -219,7 +225,7 @@ _KIDNEY_PCNL = {
         "name":        "Suction Device",
         "description": "Aspirates irrigant, stone fragments, and blood clots from "
                        "the collecting system during nephroscopy.",
-        "aliases":     ["suction", "aspirator", "suction machine"],
+        "aliases":     ["suction", "aspirator", "suction machine", "suction unit"],
     },
     6: {
         "name":        "Anesthesia Machine",
