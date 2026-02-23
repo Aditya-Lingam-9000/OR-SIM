@@ -22,6 +22,8 @@ Design principles:
 
 from __future__ import annotations
 
+import json
+
 from backend.data.surgeries import SurgeryType, MACHINES, get_machines_formatted
 from backend.data.models    import ORStateSnapshot
 
@@ -43,30 +45,48 @@ Your job is to listen to the surgeon's spoken commands and determine which equip
 Given the surgeon's latest spoken command, output ONLY a valid JSON object specifying which machines should change state.
 
 IMPORTANT RULES:
-1. Only list machines that are CHANGING state (delta only — do not repeat machines already in their correct state).
-2. Machine names in your output MUST match EXACTLY the canonical names listed in AVAILABLE EQUIPMENT.
-3. If the command is unclear or not equipment-related, return empty lists.
-4. Do NOT output anything outside the JSON block — no explanations, no markdown, no code fences.
-5. The JSON must have exactly two keys: "reasoning" and "machine_states".
+1. Use ONLY machine names copied EXACTLY from the numbered list in AVAILABLE EQUIPMENT above.
+2. Only list machines that are CHANGING state (delta only — ignore machines already in the correct state).
+3. If a command asks to turn something ON, put its EXACT name in "turn_on".
+4. If a command asks to turn something OFF, put its EXACT name in "turn_off".
+5. If the command is unclear or not equipment-related, return empty lists for both.
+6. Output ONLY the JSON. No explanations, no markdown, no code fences.
 
 === OUTPUT FORMAT (always use this exact structure) ===
 {{
   "reasoning": "<one sentence explaining your decision>",
-  "machine_states": {{
-    "0": ["<canonical machine name to turn OFF>", ...],
-    "1": ["<canonical machine name to turn ON>", ...]
-  }}
+  "turn_on":  ["<exact canonical name of machine to ACTIVATE>"],
+  "turn_off": ["<exact canonical name of machine to DEACTIVATE>"]
 }}
 
-=== EXAMPLE ===
-Surgeon says: "Activate the bypass machine and turn off the ventilator"
-Correct output:
+=== EXAMPLES ===
+
+Example 1 — Surgeon says: "Activate the bypass machine and turn off the ventilator"
 {{
-  "reasoning": "Surgeon requested CPB activation and ventilator shutdown as bypass takes over lung function.",
-  "machine_states": {{
-    "0": ["Ventilator"],
-    "1": ["Cardiopulmonary Bypass Machine"]
-  }}
+  "reasoning": "Surgeon requested CPB activation and ventilator shutdown as bypass takes over.",
+  "turn_on":  ["Cardiopulmonary Bypass Machine"],
+  "turn_off": ["Ventilator"]
+}}
+
+Example 2 — Surgeon says: "Turn on the OR lights"
+{{
+  "reasoning": "Surgeon requested surgical lights activation.",
+  "turn_on":  ["Surgical Lights"],
+  "turn_off": []
+}}
+
+Example 3 — Surgeon says: "We need the defibrillator"
+{{
+  "reasoning": "Surgeon requested defibrillator readiness — turning it on.",
+  "turn_on":  ["Defibrillator"],
+  "turn_off": []
+}}
+
+Example 4 — Surgeon says: "Turn everything off"
+{{
+  "reasoning": "Surgeon requested all equipment to be deactivated.",
+  "turn_on":  [],
+  "turn_off": {all_machines_example}
 }}
 """
 
@@ -126,10 +146,15 @@ class PromptBuilder:
                 )
         aliases_block = "\n".join(alias_lines)
 
+        # All machine names as a JSON array literal for the "turn everything off" example
+        all_names = [entry["name"] for entry in machines.values()]
+        all_machines_example = json.dumps(all_names)
+
         self._system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
-            surgery_name   = str(self.surgery),
-            machines_block = machines_block,
-            aliases_block  = aliases_block,
+            surgery_name          = str(self.surgery),
+            machines_block        = machines_block,
+            aliases_block         = aliases_block,
+            all_machines_example  = all_machines_example,
         )
         return self._system_prompt
 

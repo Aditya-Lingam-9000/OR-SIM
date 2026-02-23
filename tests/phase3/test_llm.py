@@ -79,9 +79,8 @@ class TestPromptBuilder:
     def test_system_prompt_contains_json_schema(self, heart_builder):
         sp = heart_builder.build_system_prompt()
         assert '"reasoning"' in sp
-        assert '"machine_states"' in sp
-        assert '"0"' in sp
-        assert '"1"' in sp
+        assert '"turn_on"' in sp
+        assert '"turn_off"' in sp
 
     def test_system_prompt_is_cached(self, heart_builder):
         sp1 = heart_builder.build_system_prompt()
@@ -188,6 +187,17 @@ class TestOutputParser:
         result = parse_llm_output(raw, self.SURGERY)
         assert "Ventilator" in result.machine_states["1"]
 
+    def test_new_turn_on_off_flat_format(self):
+        """Parser must accept the new turn_on/turn_off flat keys (prompt v2 format)."""
+        raw = json.dumps({
+            "reasoning": "Ventilator on, lights off.",
+            "turn_on":  ["Ventilator"],
+            "turn_off": ["Surgical Lights"],
+        })
+        result = parse_llm_output(raw, self.SURGERY)
+        assert "Ventilator" in result.machine_states["1"]
+        assert "Surgical Lights" in result.machine_states["0"]
+
     def test_code_fence_markdown(self):
         raw = (
             "Sure! Here is the result:\n"
@@ -253,6 +263,17 @@ class TestOutputParser:
         result = parse_llm_output(raw, self.SURGERY)
         assert any("entilator" in n for n in result.machine_states["1"]), \
             "Fuzzy match failed for 'ventilator'"
+
+    def test_difflib_near_miss_name(self):
+        """difflib should map 'Laparoscopy Tower' → 'Laparoscopic Tower' for Liver Resection."""
+        raw = json.dumps({
+            "reasoning": "Surgeon requested activation of the laparoscopy tower.",
+            "turn_on":  ["Laparoscopy Tower"],   # model typo — canonical is "Laparoscopic Tower"
+            "turn_off": [],
+        })
+        result = parse_llm_output(raw, SurgeryType.LIVER_RESECTION)
+        assert any("Laparoscop" in n for n in result.machine_states["1"]), \
+            f"difflib failed for 'Laparoscopy Tower', got: {result.machine_states['1']}"
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import re
+from difflib import get_close_matches
 from typing import Optional
 
 from loguru import logger
@@ -118,8 +119,9 @@ def _fuzzy_match_machine(
     Try to match an LLM-output machine name to a canonical name.
     Resolution order:
       1. Exact alias/canonical name match (case-insensitive)
-      2. Alias map substring — alias IS a substring of the input
+      2. Alias map key is a substring of the input
       3. Canonical name substring — both directions
+      4. difflib close-match on canonical names (cutoff 0.60)
     Returns the canonical name if found, else None.
     """
     name_lower = name.lower().strip()
@@ -137,6 +139,14 @@ def _fuzzy_match_machine(
     for c in canonical_names:
         if name_lower in c.lower() or c.lower() in name_lower:
             return c
+
+    # 4. difflib close-match (handles typos like 'Laparoscopy' vs 'Laparoscopic')
+    lower_canonicals = [c.lower() for c in canonical_names]
+    matches = get_close_matches(name_lower, lower_canonicals, n=1, cutoff=0.60)
+    if matches:
+        for c in canonical_names:
+            if c.lower() == matches[0]:
+                return c
 
     return None
 
@@ -186,13 +196,18 @@ def parse_llm_output(
         logger.warning(f"OutputParser: could not parse JSON from:\n{raw_text[:300]!r}")
         return LLMOutput(reasoning="Parse failed — no state change applied.")
 
-    # Extract machine_states with safe fallback
-    machine_states_raw = parsed.get("machine_states", {})
-    if not isinstance(machine_states_raw, dict):
-        machine_states_raw = {}
-
-    turn_off_raw = machine_states_raw.get("0", [])
-    turn_on_raw  = machine_states_raw.get("1", [])
+    # ── Accept BOTH output formats ─────────────────────────────────────────
+    # New format (prompt v2): {"turn_on": [...], "turn_off": [...], "reasoning": "..."}
+    # Old format (prompt v1): {"machine_states": {"0": [...], "1": [...]}, "reasoning": "..."}
+    if "turn_on" in parsed or "turn_off" in parsed:
+        turn_on_raw  = parsed.get("turn_on",  []) or []
+        turn_off_raw = parsed.get("turn_off", []) or []
+    else:
+        machine_states_raw = parsed.get("machine_states", {}) or {}
+        if not isinstance(machine_states_raw, dict):
+            machine_states_raw = {}
+        turn_off_raw = machine_states_raw.get("0", []) or []
+        turn_on_raw  = machine_states_raw.get("1", []) or []
 
     if not isinstance(turn_off_raw, list):
         turn_off_raw = []
