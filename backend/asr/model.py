@@ -135,26 +135,24 @@ class MedASRModel:
         """
         Fix LasrFeatureExtractor._torch_extract_fbank_features signature mismatch.
 
-        Some transformers versions ship a feature_extraction_lasr.py __call__ that
-        calls self._torch_extract_fbank_features(features, device, center) while the
-        method itself only accepts (self, features).  Patch the instance to accept
-        and ignore the extra positional args so inference doesn't crash.
+        The __call__ in some transformers versions dispatches:
+            self._torch_extract_fbank_features(features, device, center)
+        but the method only accepts (self, features) or (self, features, device=None).
+        Patch it to silently drop the extra positional args.
         """
-        import inspect, types
+        import types
         fe = getattr(processor, "feature_extractor", None)
         if fe is None:
             return
         orig_fn = getattr(fe.__class__, "_torch_extract_fbank_features", None)
         if orig_fn is None:
             return
-        sig    = inspect.signature(orig_fn)
-        params = list(sig.parameters.keys())   # ['self', 'input_features', ...]
-        if len(params) <= 2:
-            # __call__ passes extra args (device, center) that the method doesn't accept
-            def _patched(self_fe, input_features, *_args, **_kwargs):
-                return orig_fn(self_fe, input_features)
-            fe._torch_extract_fbank_features = types.MethodType(_patched, fe)
-            logger.info("Patched LasrFeatureExtractor._torch_extract_fbank_features (signature mismatch)")
+        # Always wrap: accept any number of positional/keyword args but only
+        # pass (self, input_features) so the function never receives too many args.
+        def _patched(self_fe, input_features, *_args, **_kwargs):
+            return orig_fn(self_fe, input_features)
+        fe._torch_extract_fbank_features = types.MethodType(_patched, fe)
+        logger.info("Patched LasrFeatureExtractor._torch_extract_fbank_features")
 
     def _load_torch_local(self) -> None:
         """Tier 1 — google/medasr PyTorch loaded from local directory (no HF token needed)."""
