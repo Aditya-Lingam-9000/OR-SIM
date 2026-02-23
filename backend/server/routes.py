@@ -28,13 +28,35 @@ router = APIRouter()
 # ── request/response schemas ──────────────────────────────────────────────────
 
 _SURGERY_MAP: dict[str, SurgeryType] = {
-    "heart":  SurgeryType.HEART_TRANSPLANT,
-    "liver":  SurgeryType.LIVER_RESECTION,
-    "kidney": SurgeryType.KIDNEY_PCNL,
+    "heart":         SurgeryType.HEART_TRANSPLANT,
+    "liver":         SurgeryType.LIVER_RESECTION,
+    "kidney":        SurgeryType.KIDNEY_PCNL,
+    "cabg":          SurgeryType.CABG,
+    "appendectomy":  SurgeryType.APPENDECTOMY,
+    "cholecystectomy": SurgeryType.CHOLECYSTECTOMY,
+    "hip":           SurgeryType.HIP_REPLACEMENT,
+    "knee":          SurgeryType.KNEE_REPLACEMENT,
+    "caesarean":     SurgeryType.CAESAREAN_SECTION,
+    "spinal":        SurgeryType.SPINAL_FUSION,
+    "cataract":      SurgeryType.CATARACT_SURGERY,
+    "hysterectomy":  SurgeryType.HYSTERECTOMY,
+    "thyroidectomy": SurgeryType.THYROIDECTOMY,
+    "colectomy":     SurgeryType.COLECTOMY,
+    "prostatectomy": SurgeryType.PROSTATECTOMY,
+    "craniotomy":    SurgeryType.CRANIOTOMY,
+    "mastectomy":    SurgeryType.MASTECTOMY,
+    "aortic":        SurgeryType.AORTIC_ANEURYSM_REPAIR,
+    "gastrectomy":   SurgeryType.GASTRECTOMY,
+    "lobectomy":     SurgeryType.LUNG_LOBECTOMY,
 }
 
 class SessionStartRequest(BaseModel):
-    surgery:      Literal["heart", "liver", "kidney"]
+    surgery: Literal[
+        "heart", "liver", "kidney", "cabg", "appendectomy", "cholecystectomy",
+        "hip", "knee", "caesarean", "spinal", "cataract", "hysterectomy",
+        "thyroidectomy", "colectomy", "prostatectomy", "craniotomy", "mastectomy",
+        "aortic", "gastrectomy", "lobectomy",
+    ]
     n_gpu_layers: int = -1  # -1 = full GPU, 0 = CPU only
 
 

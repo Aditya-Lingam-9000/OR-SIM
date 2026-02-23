@@ -4,10 +4,15 @@ CLI entry point for the OR end-to-end pipeline.
 
 Run:
     python -m backend.pipeline --surgery heart
-    python -m backend.pipeline --surgery liver --cpu
-    python -m backend.pipeline --surgery kidney --list-devices
+    python -m backend.pipeline --surgery cabg --cpu
+    python -m backend.pipeline --surgery craniotomy --list-devices
 
-Surgery choices      : heart | liver | kidney
+Surgery choices (20):
+    heart | liver | kidney | cabg | appendectomy | cholecystectomy
+    hip   | knee  | caesarean | spinal | cataract | hysterectomy
+    thyroidectomy | colectomy | prostatectomy | craniotomy | mastectomy
+    aortic | gastrectomy | lobectomy
+
 Device selection     : pass --device <index> (see --list-devices)
 GPU / CPU control    : default=GPU (-1 layers), use --cpu to force CPU
 """
@@ -34,9 +39,26 @@ logger.add(
 
 # ── surgery name → enum ───────────────────────────────────────────────────────
 _SURGERY_MAP = {
-    "heart":  SurgeryType.HEART_TRANSPLANT,
-    "liver":  SurgeryType.LIVER_RESECTION,
-    "kidney": SurgeryType.KIDNEY_PCNL,
+    "heart":           SurgeryType.HEART_TRANSPLANT,
+    "liver":           SurgeryType.LIVER_RESECTION,
+    "kidney":          SurgeryType.KIDNEY_PCNL,
+    "cabg":            SurgeryType.CABG,
+    "appendectomy":    SurgeryType.APPENDECTOMY,
+    "cholecystectomy": SurgeryType.CHOLECYSTECTOMY,
+    "hip":             SurgeryType.HIP_REPLACEMENT,
+    "knee":            SurgeryType.KNEE_REPLACEMENT,
+    "caesarean":       SurgeryType.CAESAREAN_SECTION,
+    "spinal":          SurgeryType.SPINAL_FUSION,
+    "cataract":        SurgeryType.CATARACT_SURGERY,
+    "hysterectomy":    SurgeryType.HYSTERECTOMY,
+    "thyroidectomy":   SurgeryType.THYROIDECTOMY,
+    "colectomy":       SurgeryType.COLECTOMY,
+    "prostatectomy":   SurgeryType.PROSTATECTOMY,
+    "craniotomy":      SurgeryType.CRANIOTOMY,
+    "mastectomy":      SurgeryType.MASTECTOMY,
+    "aortic":          SurgeryType.AORTIC_ANEURYSM_REPAIR,
+    "gastrectomy":     SurgeryType.GASTRECTOMY,
+    "lobectomy":       SurgeryType.LUNG_LOBECTOMY,
 }
 
 

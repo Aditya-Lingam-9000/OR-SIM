@@ -77,6 +77,12 @@ def _ctc_greedy_decode(logits: np.ndarray, logits_len: np.ndarray, vocab: dict) 
     return results
 
 
+# ── Public aliases (consumed by tests and external callers) ───────────────────
+BLANK_ID          = _BLANK_ID
+load_vocab        = _load_vocab
+ctc_greedy_decode = _ctc_greedy_decode
+
+
 # ── MedASRModel ───────────────────────────────────────────────────────────────
 
 class MedASRModel:
