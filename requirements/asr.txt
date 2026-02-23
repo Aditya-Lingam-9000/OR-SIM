@@ -1,10 +1,10 @@
-# ASR requirements — google/medasr via optimum ONNX Runtime
+# ASR requirements
 # transformers>=5.0.0 required for google/medasr (lasr_ctc architecture)
-# optimum[exporters] provides ORTModelForCTC + ONNX export tooling
-# onnxruntime/onnxruntime-gpu loaded by optimum automatically
+# onnxruntime used for Tier 2 sherpa-onnx int8 ONNX model
+# torch (CPU) used for Tier 1/3 google/medasr PyTorch inference
 transformers>=5.0.0
-optimum[exporters]>=1.18.0
 onnxruntime>=1.17.0
+torch
 sounddevice>=0.4.6
 numpy>=1.24
 scipy>=1.10
