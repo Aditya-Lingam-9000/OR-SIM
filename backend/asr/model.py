@@ -1,166 +1,114 @@
 """
 backend/asr/model.py
-Loads the MedASR int8 ONNX Conformer model and the SentencePiece-style tokens.txt
-vocabulary. Exposes `MedASRModel.transcribe(audio)` which returns decoded text.
+Loads google/medasr (105M Conformer CTC, trained on >5000 h of medical dictation)
+and exposes `MedASRModel.transcribe(audio)` → str.
 
-tokens.txt format: one token per line — "<token_text> <token_id>"
-  Token 0 = <blk>  (CTC blank)
-  Token 1 = <s>    (BOS — unused in greedy decode)
-  Token 2 = </s>   (EOS)
-  Token 3 = <unk>
-  Token 4 = ▁      (SentencePiece word-boundary space)
-  ...
+Model priority
+--------------
+1. ONNX Runtime via optimum  — loaded from models/medasr/onnx/
+   (pre-exported by the Kaggle notebook using optimum exporters)
+2. PyTorch via AutoModelForCTC — falls back when no ONNX export is present;
+   downloads from HuggingFace using HF_TOKEN if provided.
+
+Why google/medasr over the old int8 sherpa-onnx model
+------------------------------------------------------
+The old csukuangfj/sherpa-onnx-medasr-ctc-en-int8-2025-12-25 model is INT8-quantized
+(~35% smaller than FP32) which introduces phoneme confusion on medical terms
+(e.g. "electrocautery" → "electrocatery", "perfusion" → "infusion").
+The full-precision google/medasr achieves 6.6% WER vs ~25% for generic ASR on
+radiology dictation.
 """
 
-import re
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
+import os
 
 import numpy as np
-import onnxruntime as ort
 from loguru import logger
 
-from backend.asr.utils import audio_to_melfeatures, features_to_model_input
-
 # ── paths ─────────────────────────────────────────────────────────────────────
-_MODEL_DIR   = Path(__file__).parent.parent.parent / "models" / "medasr"
-_ONNX_PATH   = _MODEL_DIR / "model.int8.onnx"
-_TOKENS_PATH = _MODEL_DIR / "tokens.txt"
+_MODEL_DIR  = Path(__file__).parent.parent.parent / "models" / "medasr"
+_ONNX_DIR   = _MODEL_DIR / "onnx"   # pre-exported by Kaggle notebook
+_HF_REPO    = "google/medasr"
+SAMPLE_RATE = 16_000
 
-# ── CTC blank & special token IDs ────────────────────────────────────────────
-BLANK_ID = 0
-BOS_ID   = 1
-EOS_ID   = 2
-UNK_ID   = 3
-
-# SentencePiece word-boundary marker (▁, UTF-8: E2 96 81)
-SP_SPACE = "\u2581"   # ▁
-
-
-# ── tokenizer ────────────────────────────────────────────────────────────────
-
-def load_vocab(tokens_path: Path) -> dict:
-    """
-    Parse tokens.txt into {token_id: token_text} mapping.
-    Handles both UTF-8 and latin-1 encoded files.
-    """
-    vocab: dict = {}
-    try:
-        text = tokens_path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        text = tokens_path.read_text(encoding="latin-1")
-
-    for line in text.splitlines():
-        line = line.rstrip("\n")
-        if not line:
-            continue
-        # Format: "<token_text> <token_id>"
-        # Split from the RIGHT so tokens containing spaces are preserved
-        parts = line.rsplit(" ", 1)
-        if len(parts) != 2:
-            continue
-        token_text, token_id_str = parts
-        try:
-            token_id = int(token_id_str)
-        except ValueError:
-            continue
-        vocab[token_id] = token_text
-
-    logger.debug(f"Loaded vocab: {len(vocab)} tokens from {tokens_path}")
-    return vocab
-
-
-def ctc_greedy_decode(logits: np.ndarray, logits_len: np.ndarray, vocab: dict) -> List[str]:
-    """
-    CTC greedy decode for a batch of logit sequences.
-
-    Parameters
-    ----------
-    logits     : np.ndarray  [N, T_out, vocab_size]
-    logits_len : np.ndarray  [N]  actual output lengths
-    vocab      : dict        {id: text}
-
-    Returns
-    -------
-    List[str]  decoded text for each item in the batch
-    """
-    results = []
-    batch_size = logits.shape[0]
-
-    for b in range(batch_size):
-        length   = int(logits_len[b])
-        seq_logits = logits[b, :length, :]            # [T_out, vocab_size]
-        token_ids  = np.argmax(seq_logits, axis=-1)   # [T_out]
-
-        # CTC collapse: remove consecutive duplicates, then remove blank
-        collapsed = []
-        prev_id   = -1
-        for tid in token_ids:
-            if tid != prev_id:
-                collapsed.append(int(tid))
-            prev_id = tid
-
-        # Filter blanks and special tokens (BOS, EOS, UNK)
-        filtered = [tid for tid in collapsed
-                    if tid not in (BLANK_ID, BOS_ID, EOS_ID, UNK_ID)]
-
-        # Map IDs → token texts
-        tokens = [vocab.get(tid, "<?>") for tid in filtered]
-
-        # Join SentencePiece tokens into words
-        # ▁ marks the start of a new word → replace with space
-        text = "".join(tokens)
-        text = text.replace(SP_SPACE, " ").strip()
-
-        # Also handle the mojibake version (â–) in case file was latin-1 encoded
-        text = text.replace("â–", " ").strip()
-
-        # Collapse multiple spaces
-        text = re.sub(r"\s+", " ", text).strip()
-
-        results.append(text)
-
-    return results
-
-
-# ── model ─────────────────────────────────────────────────────────────────────
 
 class MedASRModel:
     """
-    Loads and runs the MedASR int8 ONNX Conformer CTC model.
+    Wraps google/medasr for real-time CTC transcription.
+
+    Priority
+    --------
+    1. ONNX Runtime (optimum) — fastest, no GPU memory for weights, best for Kaggle
+    2. PyTorch (AutoModelForCTC) — fallback used during local development or when
+       the ONNX export has not been generated yet
 
     Usage
     -----
     model = MedASRModel()
-    text  = model.transcribe(audio_float32_16khz)
+    text  = model.transcribe(audio_float32_16khz)  # numpy [T], float32, 16 kHz
     """
 
     def __init__(
         self,
-        onnx_path: Optional[Path] = None,
-        tokens_path: Optional[Path] = None,
-        providers: Optional[List[str]] = None,
+        onnx_dir: Optional[Path] = None,
+        hf_token: Optional[str] = None,
     ):
-        self.onnx_path   = onnx_path   or _ONNX_PATH
-        self.tokens_path = tokens_path or _TOKENS_PATH
+        self._onnx_dir = onnx_dir or _ONNX_DIR
+        # HF token for downloading google/medasr (gated model).
+        # Reads from HUGGING_FACE_HUB_TOKEN env var if not passed directly.
+        self._token    = hf_token or os.environ.get("HUGGING_FACE_HUB_TOKEN")
 
-        # Prefer CUDA if available, fall back to CPU
-        if providers is None:
-            available = [p for p in ort.get_available_providers()]
-            logger.debug(f"Available ORT providers: {available}")
-            if "CUDAExecutionProvider" in available:
-                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            else:
-                providers = ["CPUExecutionProvider"]
+        if self._onnx_dir.exists() and any(self._onnx_dir.iterdir()):
+            try:
+                self._load_ort()
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to load ONNX from {self._onnx_dir} ({exc}). "
+                    "Falling back to PyTorch AutoModelForCTC."
+                )
+                self._load_torch()
+        else:
+            logger.warning(
+                f"ONNX export not found at {self._onnx_dir}. "
+                "Falling back to PyTorch AutoModelForCTC.  "
+                "Run Kaggle notebook Cell 6 to generate the ONNX export."
+            )
+            self._load_torch()
 
-        logger.info(f"Loading MedASR model from {self.onnx_path}")
-        self._session = ort.InferenceSession(
-            str(self.onnx_path),
-            providers=providers,
+    # ── backend loaders ───────────────────────────────────────────────────────
+
+    def _load_ort(self) -> None:
+        """Load pre-exported ONNX model via optimum.onnxruntime."""
+        from optimum.onnxruntime import ORTModelForCTC
+        from transformers import AutoProcessor
+
+        logger.info(f"Loading google/medasr ONNX from {self._onnx_dir}")
+        self._processor = AutoProcessor.from_pretrained(str(self._onnx_dir))
+        self._model     = ORTModelForCTC.from_pretrained(str(self._onnx_dir))
+        self._backend   = "ort"
+        logger.info(f"MedASR ORT model loaded  (providers: {self._model.providers})")
+
+    def _load_torch(self) -> None:
+        """Load google/medasr via PyTorch (requires HF token for gated model)."""
+        import torch
+        from transformers import AutoModelForCTC, AutoProcessor
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info(f"Loading google/medasr via torch on {device}  (repo={_HF_REPO})")
+
+        self._processor = AutoProcessor.from_pretrained(
+            _HF_REPO, token=self._token
         )
-        logger.info(f"MedASR model loaded. Providers: {self._session.get_providers()}")
+        self._model = (
+            AutoModelForCTC.from_pretrained(_HF_REPO, token=self._token)
+            .to(device)
+        )
+        self._device  = device
+        self._backend = "torch"
+        logger.info(f"MedASR torch model loaded on {device}")
 
-        self._vocab = load_vocab(self.tokens_path)
+    # ── transcription ─────────────────────────────────────────────────────────
 
     def transcribe(self, audio: np.ndarray) -> str:
         """
@@ -172,20 +120,38 @@ class MedASRModel:
 
         Returns
         -------
-        str  transcribed text
+        str  lower-cased transcribed text, empty string if audio is silent/too short
         """
         if len(audio) == 0:
             return ""
+        if self._backend == "ort":
+            return self._transcribe_ort(audio)
+        return self._transcribe_torch(audio)
 
-        features     = audio_to_melfeatures(audio)
-        x, mask      = features_to_model_input(features)
-
-        outputs      = self._session.run(
-            ["logits", "logits_len"],
-            {"x": x, "mask": mask},
+    def _transcribe_ort(self, audio: np.ndarray) -> str:
+        inputs = self._processor(
+            audio,
+            sampling_rate=SAMPLE_RATE,
+            return_tensors="pt",
+            padding=True,
         )
-        logits      = outputs[0]   # [1, T_out, 512]
-        logits_len  = outputs[1]   # [1]
+        outputs       = self._model(**inputs)
+        predicted_ids = outputs.logits.argmax(-1)
+        text          = self._processor.batch_decode(predicted_ids)[0]
+        return text.strip().lower()
 
-        texts = ctc_greedy_decode(logits, logits_len, self._vocab)
-        return texts[0]
+    def _transcribe_torch(self, audio: np.ndarray) -> str:
+        import torch
+
+        inputs = self._processor(
+            audio,
+            sampling_rate=SAMPLE_RATE,
+            return_tensors="pt",
+            padding=True,
+        )
+        inputs = {k: v.to(self._device) for k, v in inputs.items()}
+        with torch.no_grad():
+            outputs = self._model(**inputs)
+        predicted_ids = outputs.logits.argmax(-1)
+        text          = self._processor.batch_decode(predicted_ids)[0]
+        return text.strip().lower()

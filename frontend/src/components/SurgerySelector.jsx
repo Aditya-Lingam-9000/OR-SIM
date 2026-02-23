@@ -10,9 +10,9 @@ import { useMachineStore } from '../store/machineStore'
 import { useAudioStreamer } from '../hooks/useAudioStreamer'
 
 const SURGERIES = [
-  { key: 'heart',  label: 'Heart Transplantation',           icon: '🫀' },
-  { key: 'liver',  label: 'Liver Resection',                 icon: '🫁' },
-  { key: 'kidney', label: 'Kidney PCNL (Nephrolithotomy)',   icon: '🫘' },
+  { key: 'heart',  label: 'Heart Transplantation',           icon: '🫀', fullName: 'Heart Transplantation'  },
+  { key: 'liver',  label: 'Liver Resection',                 icon: '🫁', fullName: 'Liver Resection'          },
+  { key: 'kidney', label: 'Kidney PCNL (Nephrolithotomy)',   icon: '🫘', fullName: 'Kidney PCNL'              },
 ]
 
 const styles = {
@@ -54,6 +54,9 @@ export default function SurgerySelector() {
   const sessionActive = useMachineStore((s) => s.sessionActive)
   const setSessionActive = useMachineStore((s) => s.setSessionActive)
   const setSurgery    = useMachineStore((s) => s.setSurgery)
+
+  // Keep the 3D room in sync with the selected surgery even before a session starts
+  const selectedSurgery = SURGERIES.find(s => s.key === selected)
   const wsStatus      = useMachineStore((s) => s.wsStatus)
 
   // Streams mic audio to /ws/audio whenever a session is active.
@@ -73,7 +76,7 @@ export default function SurgerySelector() {
       })
       if (res.ok) {
         const data = await res.json()
-        setSurgery(data.surgery)
+        setSurgery(data.surgery)   // backend returns canonical name e.g. "Liver Resection"
         setSessionActive(true)
       }
     } catch (e) { console.error(e) }
@@ -85,7 +88,8 @@ export default function SurgerySelector() {
     try {
       await fetch(`${API_BASE}/api/session/stop`, { method: 'POST' })
       setSessionActive(false)
-      setSurgery(null)
+      // Keep surgery set so the correct machine layout stays visible after stopping
+      setSurgery(selectedSurgery?.fullName ?? null)
     } catch (e) { console.error(e) }
     setLoading(false)
   }
@@ -100,7 +104,12 @@ export default function SurgerySelector() {
         <button
           key={s.key}
           style={styles.btn(selected === s.key)}
-          onClick={() => !sessionActive && setSelected(s.key)}
+          onClick={() => {
+            if (!sessionActive) {
+              setSelected(s.key)
+              setSurgery(s.fullName)  // update 3D room immediately on selection
+            }
+          }}
         >
           <span>{s.icon}</span>
           <span>{s.label}</span>
