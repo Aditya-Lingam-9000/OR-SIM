@@ -7,6 +7,7 @@
  */
 import React, { useState } from 'react'
 import { useMachineStore } from '../store/machineStore'
+import { useAudioStreamer } from '../hooks/useAudioStreamer'
 
 const SURGERIES = [
   { key: 'heart',  label: 'Heart Transplantation',           icon: '🫀' },
@@ -54,6 +55,10 @@ export default function SurgerySelector() {
   const setSessionActive = useMachineStore((s) => s.setSessionActive)
   const setSurgery    = useMachineStore((s) => s.setSurgery)
   const wsStatus      = useMachineStore((s) => s.wsStatus)
+
+  // Streams mic audio to /ws/audio whenever a session is active.
+  // sessionActive drives connect/disconnect automatically.
+  const { micStatus } = useAudioStreamer(sessionActive)
 
   // Support remote backend via VITE_BACKEND_URL (e.g. ngrok URL)
   const API_BASE = import.meta.env.VITE_BACKEND_URL || ''
@@ -125,6 +130,20 @@ export default function SurgerySelector() {
         <span style={{ width: 7, height: 7, borderRadius: '50%', background: wsColor, display: 'inline-block' }} />
         WebSocket: {wsStatus}
       </div>
+
+      {/* Mic status — only shown when session is active */}
+      {sessionActive && (
+        <div style={{ marginTop: 4, fontSize: 11, color: '#3a4a5a', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{
+            width: 7, height: 7, borderRadius: '50%', display: 'inline-block',
+            background: micStatus === 'streaming' ? '#00ff88'
+                      : micStatus === 'requesting' ? '#ffcc00'
+                      : micStatus === 'error'      ? '#ff4466'
+                      : '#3a4a5a',
+          }} />
+          Mic: {micStatus}
+        </div>
+      )}
     </div>
   )
 }

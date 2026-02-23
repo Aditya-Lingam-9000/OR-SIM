@@ -34,6 +34,7 @@ import threading
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 from loguru import logger
 
 from backend.data.surgeries    import SurgeryType
@@ -100,12 +101,32 @@ class ORPipeline:
 
     # ── public API ────────────────────────────────────────────────────────────
 
-    def start(self) -> None:
-        """Start the LLM worker thread and the ASR capture loop."""
+    def start(self, use_microphone: bool = True) -> None:
+        """
+        Start the LLM worker thread and the ASR pipeline.
+
+        Parameters
+        ----------
+        use_microphone : bool
+            True  → open the local sounddevice microphone (CLI / local dev).
+            False → server mode; audio must be fed via push_audio() from the
+                    /ws/audio WebSocket endpoint (Kaggle / headless server).
+        """
         logger.info("ORPipeline starting…")
         self._worker.start()
-        self.transcriber.start()
-        logger.info("ORPipeline running — speak surgery commands. Ctrl+C to stop.")
+        self.transcriber.start(use_microphone=use_microphone)
+        if use_microphone:
+            logger.info("ORPipeline running — speak surgery commands. Ctrl+C to stop.")
+        else:
+            logger.info("ORPipeline running — server mode, waiting for browser audio.")
+
+    def push_audio(self, block: np.ndarray) -> None:
+        """
+        Feed a raw float32 PCM block (16 kHz) received from the browser
+        into the VAD → ASR → LLM pipeline.
+        Called by the /ws/audio WebSocket handler per incoming chunk.
+        """
+        self.transcriber.push_audio(block)
 
     def stop(self) -> None:
         """

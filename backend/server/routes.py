@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 from typing import Literal
 
+import numpy as np
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from loguru import logger
 from pydantic import BaseModel
@@ -79,8 +80,9 @@ async def start_session(body: SessionStartRequest, request: Request):
     # Register WebSocket broadcast callback on the state manager
     pipeline.state_manager.register_callback(ws_manager.broadcast_from_thread)
 
-    # Start in background thread (start() blocks on audio capture)
-    await asyncio.to_thread(pipeline.start)
+    # Start in server mode — no local microphone.
+    # Audio is streamed from the browser via the /ws/audio WebSocket endpoint.
+    await asyncio.to_thread(pipeline.start, False)
 
     app_state.pipeline = pipeline
     app_state.surgery  = surgery
@@ -130,6 +132,36 @@ async def get_state(request: Request):
 
     snapshot = app_state.pipeline.state_manager.get_snapshot()
     return {"status": "ok", "state": snapshot.to_json_dict()}
+
+
+# ── browser audio stream endpoint ────────────────────────────────────────────
+
+@router.websocket("/ws/audio")
+async def websocket_audio(ws: WebSocket):
+    """
+    Receives raw PCM audio from the browser microphone.
+
+    Protocol
+    --------
+    * Client connects after session is started.
+    * Each message is a binary frame of float32 samples at 16 kHz
+      (any chunk size — the VAD re-chunks to BLOCK_SIZE=320 internally).
+    * Server feeds each chunk into pipeline.push_audio() → VAD → ASR → LLM.
+    * Connection should be closed when the session stops.
+    """
+    await ws.accept()
+    logger.info("Audio WS: browser microphone connected.")
+    try:
+        while True:
+            raw = await ws.receive_bytes()
+            block = np.frombuffer(raw, dtype=np.float32).copy()
+            pipeline = getattr(ws.app.state, "pipeline", None)
+            if pipeline is not None:
+                pipeline.push_audio(block)
+    except WebSocketDisconnect:
+        logger.info("Audio WS: browser microphone disconnected.")
+    except Exception as exc:
+        logger.warning(f"Audio WS error: {exc!r}")
 
 
 # ── health check ──────────────────────────────────────────────────────────────

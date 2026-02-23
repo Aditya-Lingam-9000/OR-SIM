@@ -20,6 +20,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+import numpy as np
 from loguru import logger
 
 from backend.asr.model  import MedASRModel
@@ -88,9 +89,20 @@ class LiveTranscriber:
             except Exception as exc:
                 logger.error(f"on_transcription callback error: {exc}")
 
-    def start(self) -> None:
-        self._capture.start()
-        logger.info("🎙  Listening… Speak your surgery commands. Press Ctrl+C to stop.")
+    def start(self, use_microphone: bool = True) -> None:
+        self._capture.start(use_microphone=use_microphone)
+        if use_microphone:
+            logger.info("🎙  Listening… Speak your surgery commands. Press Ctrl+C to stop.")
+        else:
+            logger.info("LiveTranscriber ready — server mode (browser mic via /ws/audio).")
+
+    def push_audio(self, block: np.ndarray) -> None:
+        """
+        Feed a raw float32 PCM block (16 kHz) into the VAD pipeline.
+        Called from the /ws/audio WebSocket handler for each chunk received
+        from the browser's microphone.
+        """
+        self._capture.push_block(block)
 
     def stop(self) -> None:
         self._capture.stop()

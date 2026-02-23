@@ -212,8 +212,26 @@ class AudioCapture:
 
     # ── public ────────────────────────────────────────────────────────────────
 
-    def start(self) -> None:
-        """Start microphone capture and VAD worker thread."""
+    def push_block(self, block: np.ndarray) -> None:
+        """
+        Feed a raw audio block directly into the VAD queue.
+
+        Use this in server / headless mode (no microphone) when audio arrives
+        from an external source e.g. the browser's getUserMedia stream over
+        the /ws/audio WebSocket.  The block is re-chunked into BLOCK_SIZE
+        pieces so the VAD silence-frame counter stays accurate.
+
+        Parameters
+        ----------
+        block : 1-D float32 numpy array at SAMPLE_RATE (16 kHz)
+        """
+        for i in range(0, len(block), BLOCK_SIZE):
+            chunk = block[i : i + BLOCK_SIZE]
+            if len(chunk) == BLOCK_SIZE:
+                self._audio_queue.put(chunk)
+
+    def start(self, use_microphone: bool = True) -> None:
+        """Start VAD worker thread, and optionally open the local microphone."""
         if self._running:
             return
         self._running = True
@@ -225,21 +243,27 @@ class AudioCapture:
         )
         self._worker_thread.start()
 
-        self._stream = sd.InputStream(
-            samplerate=self.sample_rate,
-            channels=1,
-            dtype="float32",
-            blocksize=BLOCK_SIZE,
-            device=self.device,
-            callback=self._sd_callback,
-        )
-        self._stream.start()
-        logger.info(
-            f"AudioCapture (VAD) started — device={self.device}, "
-            f"speech_thresh={SPEECH_RMS_THRESHOLD}, silence_thresh={SILENCE_RMS_THRESHOLD}, "
-            f"silence_dur={SILENCE_DURATION_SEC}s, pre_roll={PRE_ROLL_SEC}s, "
-            f"sr={self.sample_rate} Hz"
-        )
+        if use_microphone:
+            self._stream = sd.InputStream(
+                samplerate=self.sample_rate,
+                channels=1,
+                dtype="float32",
+                blocksize=BLOCK_SIZE,
+                device=self.device,
+                callback=self._sd_callback,
+            )
+            self._stream.start()
+            logger.info(
+                f"AudioCapture (VAD) started — device={self.device}, "
+                f"speech_thresh={SPEECH_RMS_THRESHOLD}, silence_thresh={SILENCE_RMS_THRESHOLD}, "
+                f"silence_dur={SILENCE_DURATION_SEC}s, pre_roll={PRE_ROLL_SEC}s, "
+                f"sr={self.sample_rate} Hz"
+            )
+        else:
+            logger.info(
+                "AudioCapture (VAD) started in server mode — "
+                "waiting for audio via push_block() (no local microphone used)"
+            )
 
     def stop(self) -> None:
         """Stop capture and clean up threads."""
