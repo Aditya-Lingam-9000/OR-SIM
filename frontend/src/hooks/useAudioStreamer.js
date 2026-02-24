@@ -42,20 +42,27 @@ function buildAudioWsUrl() {
 export function useAudioStreamer(sessionActive) {
   const [micStatus, setMicStatus] = useState('idle')
 
-  const wsRef        = useRef(null)
-  const ctxRef       = useRef(null)
-  const streamRef    = useRef(null)
-  const processorRef = useRef(null)
-  const sourceRef    = useRef(null)
+  const wsRef           = useRef(null)
+  const ctxRef          = useRef(null)
+  const streamRef       = useRef(null)
+  const processorRef    = useRef(null)
+  const sourceRef       = useRef(null)
+  const reconnectTimerRef = useRef(null)
+  const cancelledRef    = useRef(false)
 
   useEffect(() => {
     if (!sessionActive) {
+      cancelledRef.current = true
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
       teardown()
       setMicStatus('idle')
       return
     }
 
-    let cancelled = false
+    cancelledRef.current = false
 
     async function start() {
       setMicStatus('requesting')
@@ -70,7 +77,7 @@ export function useAudioStreamer(sessionActive) {
           },
           video: false,
         })
-        if (cancelled) { mediaStream.getTracks().forEach(t => t.stop()); return }
+        if (cancelledRef.current) { mediaStream.getTracks().forEach(t => t.stop()); return }
         streamRef.current = mediaStream
 
         // 2. AudioContext at 16 kHz — matches backend SAMPLE_RATE exactly,
@@ -78,7 +85,7 @@ export function useAudioStreamer(sessionActive) {
         const ctx = new (window.AudioContext || window.webkitAudioContext)({
           sampleRate: SAMPLE_RATE,
         })
-        if (cancelled) { ctx.close(); mediaStream.getTracks().forEach(t => t.stop()); return }
+        if (cancelledRef.current) { ctx.close(); mediaStream.getTracks().forEach(t => t.stop()); return }
         ctxRef.current = ctx
 
         // 3. Build audio graph:  mic source → scriptProcessor
@@ -94,7 +101,7 @@ export function useAudioStreamer(sessionActive) {
         wsRef.current = ws
 
         ws.onopen = () => {
-          if (cancelled) { ws.close(); return }
+          if (cancelledRef.current) { ws.close(); return }
           console.log('[OR-SIM] Audio WS open →', wsUrl)
 
           // Only start sending once the WS is connected
@@ -113,16 +120,24 @@ export function useAudioStreamer(sessionActive) {
 
         ws.onclose = (ev) => {
           console.log('[OR-SIM] Audio WS closed', ev.code, ev.reason)
-          if (!cancelled) setMicStatus('idle')
+          if (cancelledRef.current) return   // intentional teardown — stay idle
+          // Unexpected close while session is still active → reconnect
+          console.log('[OR-SIM] Audio WS dropped unexpectedly — reconnecting in 2 s…')
+          setMicStatus('idle')
+          teardown()
+          reconnectTimerRef.current = setTimeout(() => {
+            if (!cancelledRef.current) start()
+          }, 2000)
         }
 
         ws.onerror = (err) => {
           console.warn('[OR-SIM] Audio WS error', err)
+          // onclose will fire after onerror, so reconnect is handled there
           setMicStatus('error')
         }
 
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelledRef.current) {
           console.error('[OR-SIM] Mic error:', err)
           setMicStatus('error')
         }
@@ -132,7 +147,11 @@ export function useAudioStreamer(sessionActive) {
     start()
 
     return () => {
-      cancelled = true
+      cancelledRef.current = true
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
       teardown()
     }
   }, [sessionActive]) // eslint-disable-line react-hooks/exhaustive-deps
