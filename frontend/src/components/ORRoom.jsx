@@ -13,6 +13,13 @@ import * as THREE from 'three'
 import { useMachineStore }           from '../store/machineStore'
 import MachineNode                   from './MachineNode'
 import { ORPersonnel }               from './MedicalModels3D'
+import { use3DHover }                from '../hooks/use3DHover'
+import {
+  SURGICAL_LIGHT_DESCRIPTION,
+  PATIENT_DESCRIPTION_TEMPLATE,
+  PATIENT_FIRST_NAMES, PATIENT_LAST_NAMES,
+  pickRandom,
+}                                    from '../data/descriptions'
 import { HEART_MACHINES }            from '../scenes/HeartTransplantRoom'
 import { LIVER_MACHINES }            from '../scenes/LiverResectionRoom'
 import { KIDNEY_MACHINES }           from '../scenes/KidneyPCNLRoom'
@@ -315,9 +322,15 @@ function SurgicalLightHead({ offset, isOn }) {
 // Surgical light arm assembly (ceiling-mounted)
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function SurgicalLightArm({ position, headOffsets, isOn }) {
+  const hoverHandlers = use3DHover({
+    label:       'Surgical Lights',
+    subtitle:    isOn ? 'ACTIVE' : 'STANDBY',
+    description: SURGICAL_LIGHT_DESCRIPTION,
+    accentColor: '#fff8d0',
+  })
   return (
-    <group position={position}>
-      {/* Ceiling mounting plate — square forged aluminium profile */}
+    <group position={position} {...hoverHandlers}>
+      {/* Ceiling mounting plate — square forged aluminium profile */}}
       <mesh castShadow>
         <boxGeometry args={[0.28, 0.05, 0.28]} />
         <meshStandardMaterial color="#6a7a88" roughness={0.28} metalness={0.90} />
@@ -366,6 +379,21 @@ function SurgicalLightArm({ position, headOffsets, isOn }) {
 // Detailed Surgical Table
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function SurgicalTable() {
+  const surgery      = useMachineStore((s) => s.surgery)
+  const patientName  = useMemo(
+    () => pickRandom(PATIENT_FIRST_NAMES) + ' ' + pickRandom(PATIENT_LAST_NAMES),
+    [],
+  )
+  const hoverHandlers = use3DHover({
+    label:       patientName,
+    subtitle:    surgery ?? 'AWAITING SURGERY',
+    description: PATIENT_DESCRIPTION_TEMPLATE(
+      patientName,
+      surgery ?? 'a scheduled procedure',
+    ),
+    accentColor: '#ffcc80',
+  })
+
   const chestRef   = useRef()
   const abdomenRef = useRef()
   useFrame(() => {
@@ -381,7 +409,7 @@ function SurgicalTable() {
     }
   })
   return (
-    <group>
+    <group {...hoverHandlers}>
       {/* Hydraulic base pedestal */}
       <mesh position={[0, 0.06, 0]} receiveShadow>
         <boxGeometry args={[0.72, 0.12, 0.46]} />

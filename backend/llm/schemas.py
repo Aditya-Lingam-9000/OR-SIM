@@ -30,11 +30,20 @@ class LLMOutput(BaseModel):
         "0" → list of machine names to switch OFF
         "1" → list of machine names to switch ON
     (Delta only — machines that don't change are NOT listed)
+
+    unresolved_names:
+        Machine names that appeared in the surgeon's command but are NOT
+        part of the current surgery's equipment list.  These are surfaced to
+        the frontend as "unavailable machine" toasts.
     """
     reasoning:      str              = Field(default="", description="One-sentence reasoning for the decision")
     machine_states: dict[str, list[str]] = Field(
         default_factory=lambda: {"0": [], "1": []},
         description='Keys must be "0" (turn off) and "1" (turn on)',
+    )
+    unresolved_names: list[str] = Field(
+        default_factory=list,
+        description="Machine names requested but not found in this surgery's equipment list",
     )
 
     @model_validator(mode="after")
@@ -57,9 +66,18 @@ class LLMOutput(BaseModel):
         return self
 
     def to_state_update_kwargs(self) -> dict:
-        """Convert to kwargs for StateUpdateRequest construction."""
+        """Convert to kwargs for StateUpdateRequest construction.
+
+        unresolved_names (machines not in this surgery's equipment list) are
+        appended to turn_on so StateManager can classify them as unavailable
+        and surface them to the frontend as toast notifications.
+        """
+        turn_on_combined = list(self.machine_states["1"])
+        for name in self.unresolved_names:
+            if name not in turn_on_combined:
+                turn_on_combined.append(name)
         return {
-            "turn_on":  self.machine_states["1"],
+            "turn_on":  turn_on_combined,
             "turn_off": self.machine_states["0"],
             "reasoning": self.reasoning,
         }

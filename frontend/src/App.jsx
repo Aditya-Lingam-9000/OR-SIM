@@ -5,6 +5,7 @@
 import React, { Suspense, useState, useEffect, useRef } from 'react'
 import { useORWebSocket }  from './hooks/useORWebSocket'
 import { useMachineStore } from './store/machineStore'
+import { useHoverStore }   from './store/hoverStore'
 import SurgerySelector     from './components/SurgerySelector'
 import TranscriptionBar    from './components/TranscriptionBar'
 import ORRoom from './components/ORRoom'
@@ -93,6 +94,62 @@ function UnavailableToast({ items, onDismiss }) {
           }} />
         </div>
       ))}
+    </div>
+  )
+}
+
+// ── 3D object hover description tooltip ─────────────────────────────────────
+function HoverTooltip() {
+  const info = useHoverStore((s) => s.hoverInfo)
+  if (!info) return null
+  const { label, subtitle, description, accentColor } = info
+  return (
+    <div style={{
+      position: 'absolute', bottom: 24, right: 24,
+      zIndex: 400, pointerEvents: 'none',
+      maxWidth: 320,
+    }}>
+      <style>{`
+        @keyframes ht-in {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+      {/* key re-triggers animation when the hovered target changes */}
+      <div key={label + subtitle} style={{
+        animation: 'ht-in 0.18s ease-out both',
+        background: 'linear-gradient(135deg, rgba(4,10,24,0.96) 0%, rgba(8,18,40,0.96) 100%)',
+        border: `1px solid ${accentColor}44`,
+        borderLeft: `2.5px solid ${accentColor}`,
+        borderRadius: 8,
+        padding: '10px 14px 12px',
+        backdropFilter: 'blur(14px)',
+        boxShadow: `0 4px 24px rgba(0,0,0,0.65), 0 0 0 1px rgba(0,0,0,0.2), 0 0 12px ${accentColor}18`,
+        fontFamily: 'Segoe UI, system-ui, sans-serif',
+      }}>
+        {/* Label + subtitle */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 5 }}>
+          <span style={{
+            fontSize: 12, fontWeight: 700,
+            color: accentColor,
+            letterSpacing: 0.3,
+            textShadow: `0 0 10px ${accentColor}80`,
+          }}>{label}</span>
+          {subtitle && (
+            <span style={{
+              fontSize: 9, letterSpacing: 2.2,
+              color: accentColor + '99',
+              textTransform: 'uppercase', fontWeight: 600,
+            }}>{subtitle}</span>
+          )}
+        </div>
+        {/* Description text */}
+        <p style={{
+          margin: 0,
+          fontSize: 10.5, lineHeight: 1.58,
+          color: 'rgba(186,208,234,0.80)',
+        }}>{description}</p>
+      </div>
     </div>
   )
 }
@@ -362,6 +419,7 @@ export default function App() {
       </div>
 
       <UnavailableToast items={toasts} onDismiss={dismissToast} />
+      <HoverTooltip />
       <TranscriptionBar />
     </div>
   )

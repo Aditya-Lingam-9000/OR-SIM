@@ -51,12 +51,14 @@ IMPORTANT RULES:
 4. If a command asks to turn something OFF, put its EXACT name in "turn_off".
 5. If the command is unclear or not equipment-related, return empty lists for both.
 6. Output ONLY the JSON. No explanations, no markdown, no code fences.
+7. If the surgeon mentions a device that is NOT in the AVAILABLE EQUIPMENT list above (e.g., equipment from a different type of surgery), put its name in "not_available". Do NOT add it to "turn_on" or "turn_off".
 
 === OUTPUT FORMAT (always use this exact structure) ===
 {{
   "reasoning": "<one sentence explaining your decision>",
-  "turn_on":  ["<exact canonical name of machine to ACTIVATE>"],
-  "turn_off": ["<exact canonical name of machine to DEACTIVATE>"]
+  "turn_on":       ["<exact canonical name of machine to ACTIVATE>"],
+  "turn_off":      ["<exact canonical name of machine to DEACTIVATE>"],
+  "not_available": ["<name of any requested device NOT in this surgery's equipment list>"]
 }}
 
 === EXAMPLES ===
@@ -64,29 +66,41 @@ IMPORTANT RULES:
 Example 1 — Surgeon says: "Activate the bypass machine and turn off the ventilator"
 {{
   "reasoning": "Surgeon requested CPB activation and ventilator shutdown as bypass takes over.",
-  "turn_on":  ["Cardiopulmonary Bypass Machine"],
-  "turn_off": ["Ventilator"]
+  "turn_on":       ["Cardiopulmonary Bypass Machine"],
+  "turn_off":      ["Ventilator"],
+  "not_available": []
 }}
 
 Example 2 — Surgeon says: "Turn on the OR lights"
 {{
   "reasoning": "Surgeon requested surgical lights activation.",
-  "turn_on":  ["Surgical Lights"],
-  "turn_off": []
+  "turn_on":       ["Surgical Lights"],
+  "turn_off":      [],
+  "not_available": []
 }}
 
 Example 3 — Surgeon says: "We need the defibrillator"
 {{
   "reasoning": "Surgeon requested defibrillator readiness — turning it on.",
-  "turn_on":  ["Defibrillator"],
-  "turn_off": []
+  "turn_on":       ["Defibrillator"],
+  "turn_off":      [],
+  "not_available": []
 }}
 
 Example 4 — Surgeon says: "Turn everything off"
 {{
   "reasoning": "Surgeon requested all equipment to be deactivated.",
-  "turn_on":  [],
-  "turn_off": {all_machines_example}
+  "turn_on":       [],
+  "turn_off":      {all_machines_example},
+  "not_available": []
+}}
+
+Example 5 — Surgeon says: "We need the fluoroscopy C-arm" (not in this surgery's equipment)
+{{
+  "reasoning": "Fluoroscopy C-Arm is not part of this surgery's equipment list.",
+  "turn_on":       [],
+  "turn_off":      [],
+  "not_available": ["Fluoroscopy C-Arm"]
 }}
 """
 

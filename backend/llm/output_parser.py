@@ -157,16 +157,26 @@ def _normalise_machine_names(
     alias_map: dict[str, str],
     label: str,
 ) -> list[str]:
-    """Map LLM-output machine names to canonical names, dropping unknowns."""
-    result = []
+    """Map LLM-output machine names to canonical names.
+
+    Returns
+    -------
+    (resolved, unresolved) where:
+        resolved   – canonical names that matched this surgery's equipment list
+        unresolved – original names that did NOT match (possible unavailable machines)
+    """
+    resolved: list[str]   = []
+    unresolved: list[str] = []
     for name in machine_list:
         matched = _fuzzy_match_machine(name, canonical_names, alias_map)
         if matched:
-            if matched not in result:
-                result.append(matched)
+            if matched not in resolved:
+                resolved.append(matched)
         else:
             logger.warning(f"  OutputParser: unknown machine in {label}: {name!r}")
-    return result
+            if name not in unresolved:
+                unresolved.append(name)
+    return resolved, unresolved
 
 
 # ── main entry point ──────────────────────────────────────────────────────────
@@ -215,18 +225,34 @@ def parse_llm_output(
         turn_on_raw = []
 
     # Normalise machine names (canonical + alias aware)
-    turn_off = _normalise_machine_names(turn_off_raw, canonical_names, alias_map, label="turn_off")
-    turn_on  = _normalise_machine_names(turn_on_raw,  canonical_names, alias_map, label="turn_on")
+    turn_off, _              = _normalise_machine_names(turn_off_raw, canonical_names, alias_map, label="turn_off")
+    turn_on,  unresolved_on  = _normalise_machine_names(turn_on_raw,  canonical_names, alias_map, label="turn_on")
+
+    # Collect names MedGemma itself flagged as not in this surgery's equipment
+    not_available_raw = parsed.get("not_available", []) or []
+    if not isinstance(not_available_raw, list):
+        not_available_raw = []
+    not_available = [str(v).strip() for v in not_available_raw if str(v).strip()]
+
+    # Deduplicated union: parser-unresolved + model-flagged-not-available
+    seen: set[str] = set()
+    all_unresolved: list[str] = []
+    for name in [*unresolved_on, *not_available]:
+        if name not in seen:
+            seen.add(name)
+            all_unresolved.append(name)
 
     reasoning = str(parsed.get("reasoning", "")).strip()
 
     result = LLMOutput(
-        reasoning      = reasoning,
-        machine_states = {"0": turn_off, "1": turn_on},
+        reasoning        = reasoning,
+        machine_states   = {"0": turn_off, "1": turn_on},
+        unresolved_names = all_unresolved,
     )
 
     logger.debug(
-        f"OutputParser: turn_on={turn_on} | turn_off={turn_off} | reasoning={reasoning!r:.80}"
+        f"OutputParser: turn_on={turn_on} | turn_off={turn_off} "
+        f"| unresolved={all_unresolved} | reasoning={reasoning!r:.80}"
     )
     return result
 

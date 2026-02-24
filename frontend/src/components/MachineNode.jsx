@@ -8,13 +8,22 @@ import React, { useRef } from 'react'
 import { useFrame }       from '@react-three/fiber'
 import { Html }           from '@react-three/drei'
 import { getMachineModel } from './MedicalModels3D'
-import { useMachineStore } from '../store/machineStore'
+import { useMachineStore }      from '../store/machineStore'
+import { use3DHover }           from '../hooks/use3DHover'
+import { MACHINE_DESCRIPTIONS } from '../data/descriptions'
 import * as THREE from 'three'
 
 export default function MachineNode({ name, position, baseColor, icon, isOn }) {
   const phase = useRef(Math.random() * Math.PI * 2)
   const lightRef = useRef()
   const isRotating = useMachineStore((s) => s.isRotating)
+
+  const hoverHandlers = use3DHover({
+    label:       name,
+    subtitle:    isOn ? 'ACTIVE' : 'STANDBY',
+    description: MACHINE_DESCRIPTIONS[name] ?? 'Medical equipment used during surgical procedures.',
+    accentColor: baseColor,
+  })
 
   useFrame((_, delta) => {
     phase.current += delta * 1.6
@@ -26,7 +35,7 @@ export default function MachineNode({ name, position, baseColor, icon, isOn }) {
   const [x, z] = position
 
   return (
-    <group position={[x, 0, z]}>
+    <group position={[x, 0, z]} {...hoverHandlers}>
       {/* 3D machine model — y=0 is floor */}
       {getMachineModel(name, isOn, baseColor)}
 

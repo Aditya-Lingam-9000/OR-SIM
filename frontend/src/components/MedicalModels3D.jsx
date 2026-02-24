@@ -3,9 +3,15 @@
  * Detailed procedural 3D models for every OR machine type + OR personnel.
  * All models sit with y=0 at floor level.
  */
-import React, { useRef } from 'react'
+import React, { useRef, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { use3DHover }        from '../hooks/use3DHover'
+import {
+  ROLE_DESCRIPTIONS,
+  DOCTOR_FIRST_NAMES, NURSE_FIRST_NAMES,
+  pickRandom,
+}                            from '../data/descriptions'
 
 //  Primitive helpers 
 function Box({ p = [0, 0, 0], s = [1, 1, 1], rot = [0, 0, 0], color = '#aabbcc',
@@ -899,30 +905,78 @@ function HumanFigure({ scrubsColor = '#2a6070', role = 'surgeon', facing = 0 }) 
   )
 }
 
-export function SurgeonFigure({ position, rotation }) {
-  return <group position={position} rotation={rotation}><HumanFigure scrubsColor="#2a6878" role="surgeon" /></group>
+export function SurgeonFigure({ position, rotation, name = 'Dr. Unknown' }) {
+  const hover = use3DHover({
+    label:       name,
+    subtitle:    'SURGEON',
+    description: ROLE_DESCRIPTIONS.surgeon,
+    accentColor: '#00ddff',
+  })
+  return (
+    <group position={position} rotation={rotation} {...hover}>
+      <HumanFigure scrubsColor="#2a6878" role="surgeon" />
+    </group>
+  )
 }
-export function AssistantFigure({ position, rotation }) {
-  return <group position={position} rotation={rotation}><HumanFigure scrubsColor="#2a5060" role="assistant" /></group>
+export function AssistantFigure({ position, rotation, name = 'Dr. Unknown' }) {
+  const hover = use3DHover({
+    label:       name,
+    subtitle:    'ASSISTANT SURGEON',
+    description: ROLE_DESCRIPTIONS.assistant,
+    accentColor: '#66ccff',
+  })
+  return (
+    <group position={position} rotation={rotation} {...hover}>
+      <HumanFigure scrubsColor="#2a5060" role="assistant" />
+    </group>
+  )
 }
-export function AnesthesiologistFigure({ position, rotation }) {
-  return <group position={position} rotation={rotation}><HumanFigure scrubsColor="#2a3870" role="anesthesiologist" /></group>
+export function AnesthesiologistFigure({ position, rotation, name = 'Dr. Unknown' }) {
+  const hover = use3DHover({
+    label:       name,
+    subtitle:    'ANAESTHESIOLOGIST',
+    description: ROLE_DESCRIPTIONS.anesthesiologist,
+    accentColor: '#8888ff',
+  })
+  return (
+    <group position={position} rotation={rotation} {...hover}>
+      <HumanFigure scrubsColor="#2a3870" role="anesthesiologist" />
+    </group>
+  )
 }
-export function ScrubNurseFigure({ position, rotation }) {
-  return <group position={position} rotation={rotation}><HumanFigure scrubsColor="#3a7060" role="nurse" /></group>
+export function ScrubNurseFigure({ position, rotation, name = 'Nurse Unknown' }) {
+  const hover = use3DHover({
+    label:       name,
+    subtitle:    'SCRUB NURSE',
+    description: ROLE_DESCRIPTIONS.nurse,
+    accentColor: '#44ddaa',
+  })
+  return (
+    <group position={position} rotation={rotation} {...hover}>
+      <HumanFigure scrubsColor="#3a7060" role="nurse" />
+    </group>
+  )
 }
 
 export function ORPersonnel() {
+  // Generate one name per role, stable across re-renders (changes only on unmount)
+  const names = useMemo(() => ({
+    surgeon:          'Dr. ' + pickRandom(DOCTOR_FIRST_NAMES),
+    assistant:        'Dr. ' + pickRandom(DOCTOR_FIRST_NAMES),
+    anesthesiologist: 'Dr. ' + pickRandom(DOCTOR_FIRST_NAMES),
+    nurse:            'Nurse ' + pickRandom(NURSE_FIRST_NAMES),
+  }), [])
+
   return (
     <>
       {/* Surgeon - right side of table, facing across */}
-      <SurgeonFigure position={[1.15, 0, -0.1]} rotation={[0, -Math.PI / 2, 0]} />
+      <SurgeonFigure position={[1.15, 0, -0.1]} rotation={[0, -Math.PI / 2, 0]} name={names.surgeon} />
       {/* Assistant surgeon - left side, facing across */}
-      <AssistantFigure position={[-1.15, 0, -0.1]} rotation={[0, Math.PI / 2, 0]} />
+      <AssistantFigure position={[-1.15, 0, -0.1]} rotation={[0, Math.PI / 2, 0]} name={names.assistant} />
       {/* Anesthesiologist - at head of table */}
-      <AnesthesiologistFigure position={[0.6, 0, 2.2]} rotation={[0, Math.PI, 0]} />
+      <AnesthesiologistFigure position={[0.6, 0, 2.2]} rotation={[0, Math.PI, 0]} name={names.anesthesiologist} />
       {/* Scrub nurse - near instrument side */}
-      <ScrubNurseFigure position={[1.6, 0, -1.8]} rotation={[0, -Math.PI * 0.65, 0]} />
+      <ScrubNurseFigure position={[1.6, 0, -1.8]} rotation={[0, -Math.PI * 0.65, 0]} name={names.nurse} />
     </>
   )
 }
