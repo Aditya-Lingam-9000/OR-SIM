@@ -7,7 +7,7 @@ import { useORWebSocket }  from './hooks/useORWebSocket'
 import { useMachineStore } from './store/machineStore'
 import SurgerySelector     from './components/SurgerySelector'
 import TranscriptionBar    from './components/TranscriptionBar'
-import ORRoom, { SCENE_MAP, getSurgeryKey } from './components/ORRoom'
+import ORRoom from './components/ORRoom'
 
 // ── "Machine not available" toast notification ────────────────────────────
 function UnavailableToast({ items, onDismiss }) {
@@ -311,45 +311,28 @@ function SceneLoader() {
 export default function App() {
   useORWebSocket()
 
-  const machinesOn  = useMachineStore((s) => s.machinesOn)
-  const surgery     = useMachineStore((s) => s.surgery)
+  const unavailableMachines = useMachineStore((s) => s.unavailableMachines)
 
   // ── Unavailable machine toast detection ──────────────────────────────────
-  const [toasts, setToasts]   = useState([])
-  const prevOnRef             = useRef([])
-  const toastCounterRef       = useRef(0)
+  // The backend now populates unavailable_machines directly when a machine
+  // command can't be resolved for the active surgery — no frontend diff needed.
+  const [toasts, setToasts] = useState([])
+  const toastCounterRef     = useRef(0)
 
   useEffect(() => {
-    if (!surgery || !machinesOn.length) {
-      prevOnRef.current = machinesOn
-      return
-    }
-    const sceneKey    = getSurgeryKey(surgery)
-    const sceneMachines = SCENE_MAP[sceneKey] ?? []
-    const sceneNames  = new Set(sceneMachines.map(m => m.name))
-    const prevOn      = new Set(prevOnRef.current)
-
-    // Newly turned-on names that aren't in the scene
-    const unavailable = machinesOn.filter(
-      name => !prevOn.has(name) && !sceneNames.has(name)
-    )
-
-    if (unavailable.length) {
-      const DURATION = 5000
-      const newToasts = unavailable.map(name => ({
-        id: ++toastCounterRef.current,
-        name,
-        duration: DURATION,
-        leaving: false,
-      }))
-      setToasts(prev => [...prev, ...newToasts])
-      // Auto-dismiss after duration
-      newToasts.forEach(t => {
-        setTimeout(() => dismissToast(t.id), DURATION + 100)
-      })
-    }
-    prevOnRef.current = machinesOn
-  }, [machinesOn, surgery])
+    if (!unavailableMachines.length) return
+    const DURATION = 5000
+    const newToasts = unavailableMachines.map(name => ({
+      id: ++toastCounterRef.current,
+      name,
+      duration: DURATION,
+      leaving: false,
+    }))
+    setToasts(prev => [...prev, ...newToasts])
+    newToasts.forEach(t => {
+      setTimeout(() => dismissToast(t.id), DURATION + 100)
+    })
+  }, [unavailableMachines])
 
   function dismissToast(id) {
     // Mark as leaving first for exit animation

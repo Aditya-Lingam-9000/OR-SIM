@@ -47,7 +47,7 @@ export default function MachineNode({ name, position, baseColor, icon, isOn }) {
         position={[0, 2.1, 0]}
         center
         distanceFactor={10}
-        zIndexRange={[1, 19]}
+        zIndexRange={[19, 1]}
         style={{ pointerEvents: 'none', userSelect: 'none' }}
       >
         <div style={{

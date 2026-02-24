@@ -38,6 +38,9 @@ class ORStateSnapshot(BaseModel):
     machine_states: dict[str, list[str]] = Field(
         default_factory=lambda: {"0": [], "1": []}
     )
+    # Machine names that were commanded but don't exist in the active surgery.
+    # Populated by StateManager.apply_update() so the frontend can warn the user.
+    unavailable_machines: list[str] = Field(default_factory=list)
 
     def to_json_dict(self) -> dict:
         """Return a plain dict suitable for json.dumps."""

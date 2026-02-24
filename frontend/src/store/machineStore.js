@@ -14,22 +14,24 @@
 import { create } from 'zustand'
 
 export const useMachineStore = create((set) => ({
-  surgery:       null,
-  machinesOn:    [],
-  machinesOff:   [],
-  transcription: '',
-  reasoning:     '',
-  wsStatus:      'closed',
-  sessionActive: false,
-  isRotating:    false,
+  surgery:             null,
+  machinesOn:          [],
+  machinesOff:         [],
+  unavailableMachines: [],
+  transcription:       '',
+  reasoning:           '',
+  wsStatus:            'closed',
+  sessionActive:       false,
+  isRotating:          false,
 
   // Called when a WS message arrives with a full state snapshot
   applySnapshot: (snapshot) => set({
-    surgery:       snapshot.surgery       ?? null,
-    machinesOn:    snapshot.machine_states?.['1'] ?? [],
-    machinesOff:   snapshot.machine_states?.['0'] ?? [],
-    transcription: snapshot.transcription ?? '',
-    reasoning:     snapshot.reasoning     ?? '',
+    surgery:             snapshot.surgery             ?? null,
+    machinesOn:          snapshot.machine_states?.['1'] ?? [],
+    machinesOff:         snapshot.machine_states?.['0'] ?? [],
+    unavailableMachines: snapshot.unavailable_machines  ?? [],
+    transcription:       snapshot.transcription        ?? '',
+    reasoning:           snapshot.reasoning            ?? '',
   }),
 
   setWsStatus:      (s)   => set({ wsStatus: s }),

@@ -85,11 +85,14 @@ class StateManager:
         """
         Apply a state update request: turn specified machines on/off.
 
-        Unknown machine names are logged as warnings and skipped.
+        Unknown machine names are logged as warnings, skipped from state changes,
+        and collected in the returned snapshot as ``unavailable_machines`` so the
+        frontend can surface a user-visible warning.
         Returns the new ORStateSnapshot after applying changes.
         """
         with self._lock:
             changed = False
+            unavailable: list[str] = []
 
             for name in req.turn_on:
                 matched = self._resolve_name(name)
@@ -100,6 +103,7 @@ class StateManager:
                         changed = True
                 else:
                     logger.warning(f"  ⚠ Unknown machine (turn_on): {name!r}")
+                    unavailable.append(name)
 
             for name in req.turn_off:
                 matched = self._resolve_name(name)
@@ -110,11 +114,12 @@ class StateManager:
                         changed = True
                 else:
                     logger.warning(f"  ⚠ Unknown machine (turn_off): {name!r}")
+                    # Don't add turn_off misses to unavailable — user didn't try to turn on
 
             self._last_transcription = req.transcription
             self._last_reasoning     = req.reasoning
 
-            snapshot = self._build_snapshot()
+            snapshot = self._build_snapshot(unavailable_machines=unavailable)
             self._write_json(snapshot)
 
         # Fire callbacks outside the lock
@@ -172,20 +177,24 @@ class StateManager:
 
         return None
 
-    def _build_snapshot(self) -> ORStateSnapshot:
+    def _build_snapshot(
+        self,
+        unavailable_machines: Optional[list[str]] = None,
+    ) -> ORStateSnapshot:
         """Build an ORStateSnapshot from current internal state (call under lock)."""
         off_machines = [name for name, m in self._machines.items() if not m.is_on]
         on_machines  = [name for name, m in self._machines.items() if m.is_on]
 
         return ORStateSnapshot(
-            surgery        = str(self.surgery),
-            timestamp      = datetime.now(timezone.utc).isoformat(),
-            transcription  = self._last_transcription,
-            reasoning      = self._last_reasoning,
-            machine_states = {
+            surgery              = str(self.surgery),
+            timestamp            = datetime.now(timezone.utc).isoformat(),
+            transcription        = self._last_transcription,
+            reasoning            = self._last_reasoning,
+            machine_states       = {
                 "0": off_machines,
                 "1": on_machines,
             },
+            unavailable_machines = unavailable_machines or [],
         )
 
     def _write_json(self, snapshot: Optional[ORStateSnapshot] = None) -> None:
