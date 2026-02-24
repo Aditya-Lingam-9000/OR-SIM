@@ -404,7 +404,7 @@ frontend/
 │   │   ├── SurgerySelector.jsx
 │   │   ├── ORRoom.jsx            ← Three.js/PixiJS canvas
 │   │   ├── MachineNode.jsx       ← individual machine component
-│   │   └── TranscriptionBar.jsx  ← live caption strip
+│   │   └── TranscriptionBar.jsx  ← live caeryption strip
 │   ├── scenes/
 │   │   ├── HeartTransplantRoom.js
 │   │   ├── LiverResectionRoom.js

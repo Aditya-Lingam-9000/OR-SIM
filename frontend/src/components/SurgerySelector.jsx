@@ -105,7 +105,6 @@ export default function SurgerySelector() {
     <div
       ref={panelRef}
       style={{
-        position: 'absolute', top: 16, left: 16, zIndex: 200,
         width: 300,
         fontFamily: 'Segoe UI, system-ui, sans-serif',
       }}

@@ -34,7 +34,7 @@ import { AORTIC_MACHINES }           from '../scenes/AorticAneurysmRepairRoom'
 import { GASTRECTOMY_MACHINES }      from '../scenes/GastrectomyRoom'
 import { LUNG_LOBECTOMY_MACHINES }   from '../scenes/LungLobectomyRoom'
 
-const SCENE_MAP = {
+export const SCENE_MAP = {
   heart:           HEART_MACHINES,
   liver:           LIVER_MACHINES,
   kidney:          KIDNEY_MACHINES,
@@ -57,7 +57,7 @@ const SCENE_MAP = {
   lobectomy:       LUNG_LOBECTOMY_MACHINES,
 }
 
-function getSurgeryKey(v) {
+export function getSurgeryKey(v) {
   if (!v) return 'heart'
   const s = v.toLowerCase()
   if (s.includes('heart'))                         return 'heart'
@@ -524,8 +524,9 @@ function SurgicalTable() {
 // Main OR Scene
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ORScene({ machines, machinesOn }) {
-  const onSet    = useMemo(() => new Set(machinesOn), [machinesOn])
-  const lightsOn = onSet.has('Surgical Lights')
+  const onSet        = useMemo(() => new Set(machinesOn), [machinesOn])
+  const lightsOn     = onSet.has('Surgical Lights')
+  const setIsRotating = useMachineStore((s) => s.setIsRotating)
 
   return (
     <>
@@ -581,6 +582,8 @@ function ORScene({ machines, machinesOn }) {
         target={[0, 0.5, 0]}
         minPolarAngle={0.05} maxPolarAngle={Math.PI * 0.46}
         zoomSpeed={0.8} rotateSpeed={0.6} panSpeed={0.7}
+        onStart={() => setIsRotating(true)}
+        onEnd={() => setIsRotating(false)}
       />
     </>
   )

@@ -8,11 +8,13 @@ import React, { useRef } from 'react'
 import { useFrame }       from '@react-three/fiber'
 import { Html }           from '@react-three/drei'
 import { getMachineModel } from './MedicalModels3D'
+import { useMachineStore } from '../store/machineStore'
 import * as THREE from 'three'
 
 export default function MachineNode({ name, position, baseColor, icon, isOn }) {
   const phase = useRef(Math.random() * Math.PI * 2)
   const lightRef = useRef()
+  const isRotating = useMachineStore((s) => s.isRotating)
 
   useFrame((_, delta) => {
     phase.current += delta * 1.6
@@ -45,22 +47,28 @@ export default function MachineNode({ name, position, baseColor, icon, isOn }) {
         position={[0, 2.1, 0]}
         center
         distanceFactor={10}
+        zIndexRange={[1, 19]}
         style={{ pointerEvents: 'none', userSelect: 'none' }}
       >
         <div style={{
           fontFamily:  'Segoe UI, system-ui, sans-serif',
-          fontSize:    13,
+          fontSize:    isRotating ? 10.5 : 13,
           fontWeight:  isOn ? 700 : 500,
           color:       isOn ? '#ffffff' : '#607080',
           background:  isOn ? `rgba(0,0,0,0.82)` : 'rgba(0,0,0,0.55)',
-          border:      `1.5px solid ${isOn ? baseColor : 'rgba(80,100,120,0.4)'}`,
+          border:      `1.5px solid ${isRotating ? 'rgba(0,200,255,0.25)' : (isOn ? baseColor : 'rgba(80,100,120,0.4)')}`,
           borderRadius: 6,
-          padding:     '4px 10px',
-          boxShadow:   isOn ? `0 0 12px ${baseColor}55` : 'none',
+          padding:     isRotating ? '2px 7px' : '4px 10px',
+          boxShadow:   isOn && !isRotating ? `0 0 12px ${baseColor}55` : 'none',
           whiteSpace:  'nowrap',
-          textShadow:  isOn ? `0 0 8px ${baseColor}` : 'none',
-          transition:  'all 0.3s',
-          letterSpacing: 0.2,
+          textShadow:  isOn && !isRotating ? `0 0 8px ${baseColor}` : 'none',
+          opacity:     isRotating ? 0.28 : 1,
+          transform:   isRotating ? 'scale(0.82)' : 'scale(1)',
+          filter:      isRotating ? 'blur(0.6px)' : 'none',
+          transition:  isRotating
+            ? 'all 0.18s cubic-bezier(0.4,0,0.2,1)'
+            : 'all 0.45s cubic-bezier(0.34,1.56,0.64,1)',
+          letterSpacing: isRotating ? 0 : 0.2,
         }}>
           <span style={{ marginRight: 5 }}>{icon}</span>{name}
         </div>

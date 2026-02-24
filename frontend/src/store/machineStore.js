@@ -21,6 +21,7 @@ export const useMachineStore = create((set) => ({
   reasoning:     '',
   wsStatus:      'closed',
   sessionActive: false,
+  isRotating:    false,
 
   // Called when a WS message arrives with a full state snapshot
   applySnapshot: (snapshot) => set({
@@ -34,4 +35,5 @@ export const useMachineStore = create((set) => ({
   setWsStatus:      (s)   => set({ wsStatus: s }),
   setSessionActive: (val) => set({ sessionActive: val }),
   setSurgery:       (s)   => set({ surgery: s }),
+  setIsRotating:    (v)   => set({ isRotating: v }),
 }))
